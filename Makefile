@@ -1,5 +1,5 @@
 
-all: pkcs11-proxy-module.so pkcs11-proxy-server
+all: pkcs11-proxy-module.so pkcs11-proxy-server pkcs11-proxy-server.exe
 
 clean:
 	rm -f pkcs11-proxy-module.so pkcs11-proxy-module.h pkcs11-proxy-server

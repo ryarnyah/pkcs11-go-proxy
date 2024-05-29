@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"sync/atomic"
 
 	"github.com/miekg/pkcs11"
 	p11 "github.com/ryarnyah/pkcs11-go-proxy/pkcs11"
@@ -18,19 +17,23 @@ import (
 var ErrCtxNotFound = errors.New("Context not found")
 
 type pkcs11Server struct {
-	ctxs map[uint64]*pkcs11.Ctx
+	ctxs map[string]*pkcs11.Ctx
 
-	ctxIDs atomic.Uint64
 	p11.UnimplementedPKCS11Server
 }
 
 // New creates a new context and initializes the module/library for use.
 func (m *pkcs11Server) New(ctx context.Context, in *p11.NewRequest) (*p11.NewResponse, error) {
+	c, ok := m.ctxs[in.GetModule()]
+	if ok {
+		c.Finalize()
+		c.Destroy()
+		delete(m.ctxs, in.GetModule())
+	}
 	p := pkcs11.New(in.GetModule())
-	ctxID := m.ctxIDs.Add(1)
-	m.ctxs[ctxID] = p
+	m.ctxs[in.GetModule()] = p
 	return &p11.NewResponse{
-		Ctx: ctxID,
+		Ctx: in.GetModule(),
 	}, nil
 }
 
@@ -978,9 +981,16 @@ func main() {
 		panic(err)
 	}
 
-	s := grpc.NewServer()
+	errHandler := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		resp, err := handler(ctx, req)
+		if err != nil {
+			log.Printf("method %q failed: %s", info.FullMethod, err)
+		}
+		return resp, err
+	}
+	s := grpc.NewServer(grpc.UnaryInterceptor(errHandler))
 	server := &pkcs11Server{
-		ctxs: make(map[uint64]*pkcs11.Ctx, 0),
+		ctxs: make(map[string]*pkcs11.Ctx, 0),
 	}
 	p11.RegisterPKCS11Server(s, server)
 	if err := s.Serve(listener); err != nil {

@@ -16,7 +16,7 @@ import (
 
 type backend struct {
 	client p11.PKCS11Client
-	ctx    uint64
+	ctx    string
 }
 
 func (b *backend) Initialize() error {
@@ -620,7 +620,6 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Context initialized with %d\n", response.Ctx)
 	pkcs11mod.SetBackend(&backend{
 		ctx:    response.Ctx,
 		client: client,
