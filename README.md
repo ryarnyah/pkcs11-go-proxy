@@ -37,3 +37,15 @@ export PKCS11_PROXY_CERT=$(pwd)/client.crt
 p11tool --provider=$(pwd)/pkcs11-proxy-module.so --generate-random=256
 p11tool --provider=$(pwd)/pkcs11-proxy-module.so --list-mechanisms
 ```
+
+## Build
+```bash
+sudo apt-get update && sudo apt-get install gcc-multilib curl unzip gcc gcc-mingw-w64 -y
+mkdir -p $HOME/protobuf && pushd $HOME/protobuf
+curl -o protoc.zip -L 'https://github.com/protocolbuffers/protobuf/releases/download/v27.0/protoc-27.0-linux-x86_64.zip'
+unzip protoc.zip
+popd
+export PATH=$HOME/.local/bin:$HOME/protobuf/bin:$PATH
+make dev-dependencies
+make
+```
