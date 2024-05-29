@@ -13,7 +13,7 @@ pkcs11-proxy-server.exe: protoc
 	CGO_ENABLED=1 CC=/usr/bin/x86_64-w64-mingw32-gcc GOOS=windows go build -o pkcs11-proxy-server.exe ./cmd/server
 
 .PHONY: pkcs11-proxy-module.so
-pkcs11-proxy-module.so: protoc
+pkcs11-proxy-module.so: protoc init
 	go build -o pkcs11-proxy-module.so -buildmode=c-shared ./cmd/module
 
 .PHONY: protoc
@@ -23,6 +23,13 @@ protoc:
 	--go-grpc_out=pkcs11 \
 	--go_out=pkcs11 \
 	proto/schema.proto
+
+.PHONY: init
+init:
+	cd pkcs11mod; go mod init github.com/namecoin/pkcs11mod || true
+	cd pkcs11mod; go mod tidy
+	cd pkcs11mod; go generate ./...
+	cd pkcs11mod; go mod tidy
 
 .PHONY: dev-dependencies
 dev-dependencies: ## Install all dev dependencies

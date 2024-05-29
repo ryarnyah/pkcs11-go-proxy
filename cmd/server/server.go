@@ -10,6 +10,7 @@ import (
 
 	"github.com/miekg/pkcs11"
 	p11 "github.com/ryarnyah/pkcs11-go-proxy/pkcs11"
+	"github.com/ryarnyah/pkcs11-go-proxy/pkg"
 	grpc "google.golang.org/grpc"
 )
 
@@ -52,7 +53,7 @@ func (m *pkcs11Server) Initialize(ctx context.Context, in *p11.InitializeRequest
 	}
 	err := c.Initialize()
 	return &p11.InitializeResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -64,7 +65,7 @@ func (m *pkcs11Server) Finalize(ctx context.Context, in *p11.FinalizeRequest) (*
 	}
 	err := c.Finalize()
 	return &p11.FinalizeResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -77,36 +78,14 @@ func (m *pkcs11Server) GetInfo(ctx context.Context, in *p11.GetInfoRequest) (*p1
 	info, err := c.GetInfo()
 	return &p11.GetInfoResponse{
 		Info: &p11.Info{
-			CryptokiVersion:    versionToVersion(info.CryptokiVersion),
+			CryptokiVersion:    pkg.VersionToVersion(info.CryptokiVersion),
 			ManufacturerID:     info.ManufacturerID,
 			Flags:              uint64(info.Flags),
 			LibraryDescription: info.LibraryDescription,
-			LibraryVersion:     versionToVersion(info.LibraryVersion),
+			LibraryVersion:     pkg.VersionToVersion(info.LibraryVersion),
 		},
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
-}
-
-func uintToUint32(d []uint) []uint32 {
-	res := make([]uint32, len(d))
-	for i, a := range d {
-		res[i] = uint32(a)
-	}
-	return res
-}
-
-func objectHandlesToUint32(d []pkcs11.ObjectHandle) []uint32 {
-	res := make([]uint32, len(d))
-	for i, a := range d {
-		res[i] = uint32(a)
-	}
-	return res
-}
-
-func versionToVersion(v pkcs11.Version) *p11.Version {
-	return &p11.Version{
-		MajorMinor: []byte{v.Major, v.Minor},
-	}
 }
 
 // GetSlotList obtains a list of slots in the system.
@@ -117,8 +96,8 @@ func (m *pkcs11Server) GetSlotList(ctx context.Context, in *p11.GetSlotListReque
 	}
 	slots, err := c.GetSlotList(in.GetTokenPresent())
 	return &p11.GetSlotListResponse{
-		SlotIds: uintToUint32(slots),
-		Error:   uint32(err.(pkcs11.Error)),
+		SlotIds: pkg.UintToUint32(slots),
+		Error:   errorToUint32(err),
 	}, err
 }
 
@@ -134,10 +113,10 @@ func (m *pkcs11Server) GetSlotInfo(ctx context.Context, in *p11.GetSlotInfoReque
 			SlotDescription: info.SlotDescription,
 			ManufacturerID:  info.ManufacturerID,
 			Flags:           uint32(info.Flags),
-			HardwareVersion: versionToVersion(info.HardwareVersion),
-			FirmwareVersion: versionToVersion(info.FirmwareVersion),
+			HardwareVersion: pkg.VersionToVersion(info.HardwareVersion),
+			FirmwareVersion: pkg.VersionToVersion(info.FirmwareVersion),
 		},
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -166,44 +145,25 @@ func (m *pkcs11Server) GetTokenInfo(ctx context.Context, in *p11.GetTokenInfoReq
 			FreePublicMemory:   uint32(info.FreePublicMemory),
 			TotalPrivateMemory: uint32(info.TotalPrivateMemory),
 			FreePrivateMemory:  uint32(info.FreePrivateMemory),
-			HardwareVersion:    versionToVersion(info.HardwareVersion),
-			FirmwareVersion:    versionToVersion(info.FirmwareVersion),
+			HardwareVersion:    pkg.VersionToVersion(info.HardwareVersion),
+			FirmwareVersion:    pkg.VersionToVersion(info.FirmwareVersion),
 			UTCTime:            info.UTCTime,
 		},
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
-func mechanismToMechanism(m *pkcs11.Mechanism) *p11.Mechanism {
-	return &p11.Mechanism{
-		Mechanism: uint32(m.Mechanism),
-		Parameter: m.Parameter,
-		// TODO generator
+func errorToUint32(err error) uint32 {
+	if err == nil {
+		return 0
 	}
-}
-
-func reverseMechanismToMechanism(m *p11.Mechanism) *pkcs11.Mechanism {
-	return &pkcs11.Mechanism{
-		Mechanism: uint(m.Mechanism),
-		Parameter: m.Parameter,
-		// TODO generator
+	var pe pkcs11.Error
+	if !errors.As(err, &pe) {
+		// This error doesn't map to a PKCS#11 error code.  Return a generic
+		// "function failed" error instead.
+		err = pkcs11.Error(pkcs11.CKR_FUNCTION_FAILED)
 	}
-}
-
-func mechanismsToMechanisms(m []*pkcs11.Mechanism) []*p11.Mechanism {
-	res := make([]*p11.Mechanism, len(m))
-	for i, a := range m {
-		res[i] = mechanismToMechanism(a)
-	}
-	return res
-}
-
-func reverseMechanismsToMechanisms(m []*p11.Mechanism) []*pkcs11.Mechanism {
-	res := make([]*pkcs11.Mechanism, len(m))
-	for i, a := range m {
-		res[i] = reverseMechanismToMechanism(a)
-	}
-	return res
+	return uint32(pe)
 }
 
 // GetMechanismList obtains a list of mechanism types supported by a token.
@@ -214,8 +174,8 @@ func (m *pkcs11Server) GetMechanismList(ctx context.Context, in *p11.GetMechanis
 	}
 	mechanisms, err := c.GetMechanismList(uint(in.GetSlotId()))
 	return &p11.GetMechanismListResponse{
-		Mechanisms: mechanismsToMechanisms(mechanisms),
-		Error:      uint32(err.(pkcs11.Error)),
+		Mechanisms: pkg.MechanismsToMechanisms(mechanisms),
+		Error:      errorToUint32(err),
 	}, err
 }
 
@@ -226,14 +186,14 @@ func (m *pkcs11Server) GetMechanismInfo(ctx context.Context, in *p11.GetMechanis
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	info, err := c.GetMechanismInfo(uint(in.GetSlotId()), reverseMechanismsToMechanisms(in.GetMechanisms()))
+	info, err := c.GetMechanismInfo(uint(in.GetSlotId()), pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()))
 	return &p11.GetMechanismInfoResponse{
 		Info: &p11.MechanismInfo{
 			MinKeySize: uint32(info.MinKeySize),
 			MaxKeySize: uint32(info.MaxKeySize),
 			Flags:      uint32(info.Flags),
 		},
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -247,7 +207,7 @@ func (m *pkcs11Server) InitToken(ctx context.Context, in *p11.InitTokenRequest) 
 	}
 	err := c.InitToken(uint(in.GetSlotId()), in.GetPin(), in.GetLabel())
 	return &p11.InitTokenResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -259,7 +219,7 @@ func (m *pkcs11Server) InitPIN(ctx context.Context, in *p11.InitPINRequest) (*p1
 	}
 	err := c.InitPIN(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetPin())
 	return &p11.InitPINResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -271,7 +231,7 @@ func (m *pkcs11Server) SetPIN(ctx context.Context, in *p11.SetPINRequest) (*p11.
 	}
 	err := c.SetPIN(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetOldPin(), in.GetOldPin())
 	return &p11.SetPINResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -284,7 +244,7 @@ func (m *pkcs11Server) OpenSession(ctx context.Context, in *p11.OpenSessionReque
 	handle, err := c.OpenSession(uint(in.GetSlotId()), uint(in.GetFlags()))
 	return &p11.OpenSessionResponse{
 		SessionHandle: uint32(handle),
-		Error:         uint32(err.(pkcs11.Error)),
+		Error:         errorToUint32(err),
 	}, err
 }
 
@@ -296,7 +256,7 @@ func (m *pkcs11Server) CloseSession(ctx context.Context, in *p11.CloseSessionReq
 	}
 	err := c.CloseSession(pkcs11.SessionHandle(in.GetSessionHandle()))
 	return &p11.CloseSessionResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -308,7 +268,7 @@ func (m *pkcs11Server) CloseAllSessions(ctx context.Context, in *p11.CloseAllSes
 	}
 	err := c.CloseAllSessions(uint(in.GetSlotId()))
 	return &p11.CloseAllSessionsResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -326,7 +286,7 @@ func (m *pkcs11Server) GetSessionInfo(ctx context.Context, in *p11.GetSessionInf
 			Flags:       uint32(info.Flags),
 			DeviceError: uint32(info.DeviceError),
 		},
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -340,7 +300,7 @@ func (m *pkcs11Server) GetOperationState(ctx context.Context, in *p11.GetOperati
 	state, err := c.GetOperationState(pkcs11.SessionHandle(in.GetSessionHandle()))
 	return &p11.GetOperationStateResponse{
 		State: state,
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -353,7 +313,7 @@ func (m *pkcs11Server) SetOperationState(ctx context.Context, in *p11.SetOperati
 	}
 	err := c.SetOperationState(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetState(), pkcs11.ObjectHandle(in.GetEncryptKey()), pkcs11.ObjectHandle(in.GetAuthKey()))
 	return &p11.SetOperationStateResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -365,7 +325,7 @@ func (m *pkcs11Server) Login(ctx context.Context, in *p11.LoginRequest) (*p11.Lo
 	}
 	err := c.Login(pkcs11.SessionHandle(in.GetSessionHandle()), uint(in.GetUserType()), in.GetPin())
 	return &p11.LoginResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -377,38 +337,8 @@ func (m *pkcs11Server) Logout(ctx context.Context, in *p11.LogoutRequest) (*p11.
 	}
 	err := c.Logout(pkcs11.SessionHandle(in.GetSessionHandle()))
 	return &p11.LogoutResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
-}
-
-func attributeToAttribute(a *pkcs11.Attribute) *p11.Attribute {
-	return &p11.Attribute{
-		Type:  uint32(a.Type),
-		Value: a.Value,
-	}
-}
-
-func attributesToAttributes(a []*pkcs11.Attribute) []*p11.Attribute {
-	res := make([]*p11.Attribute, len(a))
-	for i, a := range a {
-		res[i] = attributeToAttribute(a)
-	}
-	return res
-}
-
-func reverseAttributeToAttribute(a *p11.Attribute) *pkcs11.Attribute {
-	return &pkcs11.Attribute{
-		Type:  uint(a.Type),
-		Value: a.Value,
-	}
-}
-
-func reverseAttributesToAttributes(a []*p11.Attribute) []*pkcs11.Attribute {
-	res := make([]*pkcs11.Attribute, len(a))
-	for i, a := range a {
-		res[i] = reverseAttributeToAttribute(a)
-	}
-	return res
 }
 
 // CreateObject creates a new object.
@@ -417,10 +347,10 @@ func (m *pkcs11Server) CreateObject(ctx context.Context, in *p11.CreateObjectReq
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	handleID, err := c.CreateObject(pkcs11.SessionHandle(in.GetSessionHandle()), reverseAttributesToAttributes(in.GetAttributes()))
+	handleID, err := c.CreateObject(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseAttributesToAttributes(in.GetAttributes()))
 	return &p11.CreateObjectResponse{
 		HandleId: uint32(handleID),
-		Error:    uint32(err.(pkcs11.Error)),
+		Error:    errorToUint32(err),
 	}, err
 }
 
@@ -430,10 +360,10 @@ func (m *pkcs11Server) CopyObject(ctx context.Context, in *p11.CopyObjectRequest
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	handleID, err := c.CopyObject(pkcs11.SessionHandle(in.GetSessionHandle()), pkcs11.ObjectHandle(in.GetHandleId()), reverseAttributesToAttributes(in.GetAttributes()))
+	handleID, err := c.CopyObject(pkcs11.SessionHandle(in.GetSessionHandle()), pkcs11.ObjectHandle(in.GetHandleId()), pkg.ReverseAttributesToAttributes(in.GetAttributes()))
 	return &p11.CopyObjectResponse{
 		HandleId: uint32(handleID),
-		Error:    uint32(err.(pkcs11.Error)),
+		Error:    errorToUint32(err),
 	}, err
 }
 
@@ -445,7 +375,7 @@ func (m *pkcs11Server) DestroyObject(ctx context.Context, in *p11.DestroyObjectR
 	}
 	err := c.DestroyObject(pkcs11.SessionHandle(in.GetSessionHandle()), pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.DestroyObjectResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -458,7 +388,7 @@ func (m *pkcs11Server) GetObjectSize(ctx context.Context, in *p11.GetObjectSizeR
 	size, err := c.GetObjectSize(pkcs11.SessionHandle(in.GetSessionHandle()), pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.GetObjectSizeResponse{
 		Size:  uint32(size),
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -468,10 +398,10 @@ func (m *pkcs11Server) GetAttributeValue(ctx context.Context, in *p11.GetAttribu
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	attributes, err := c.GetAttributeValue(pkcs11.SessionHandle(in.GetSessionHandle()), pkcs11.ObjectHandle(in.GetHandleId()), reverseAttributesToAttributes(in.GetAttributes()))
+	attributes, err := c.GetAttributeValue(pkcs11.SessionHandle(in.GetSessionHandle()), pkcs11.ObjectHandle(in.GetHandleId()), pkg.ReverseAttributesToAttributes(in.GetAttributes()))
 	return &p11.GetAttributeValueResponse{
-		Attributes: attributesToAttributes(attributes),
-		Error:      uint32(err.(pkcs11.Error)),
+		Attributes: pkg.AttributesToAttributes(attributes),
+		Error:      errorToUint32(err),
 	}, err
 }
 
@@ -481,9 +411,9 @@ func (m *pkcs11Server) SetAttributeValue(ctx context.Context, in *p11.SetAttribu
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	err := c.SetAttributeValue(pkcs11.SessionHandle(in.GetSessionHandle()), pkcs11.ObjectHandle(in.GetHandleId()), reverseAttributesToAttributes(in.GetAttributes()))
+	err := c.SetAttributeValue(pkcs11.SessionHandle(in.GetSessionHandle()), pkcs11.ObjectHandle(in.GetHandleId()), pkg.ReverseAttributesToAttributes(in.GetAttributes()))
 	return &p11.SetAttributeValueResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -494,9 +424,9 @@ func (m *pkcs11Server) FindObjectsInit(ctx context.Context, in *p11.FindObjectsI
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	err := c.FindObjectsInit(pkcs11.SessionHandle(in.GetSessionHandle()), reverseAttributesToAttributes(in.GetAttributes()))
+	err := c.FindObjectsInit(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseAttributesToAttributes(in.GetAttributes()))
 	return &p11.FindObjectsInitResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -513,9 +443,9 @@ func (m *pkcs11Server) FindObjects(ctx context.Context, in *p11.FindObjectsReque
 	}
 	handles, hasMore, err := c.FindObjects(pkcs11.SessionHandle(in.GetSessionHandle()), int(in.GetMax()))
 	return &p11.FindObjectsResponse{
-		HandleIds: objectHandlesToUint32(handles),
+		HandleIds: pkg.ObjectHandlesToUint32(handles),
 		HasMore:   hasMore,
-		Error:     uint32(err.(pkcs11.Error)),
+		Error:     errorToUint32(err),
 	}, err
 }
 
@@ -527,7 +457,7 @@ func (m *pkcs11Server) FindObjectsFinal(ctx context.Context, in *p11.FindObjects
 	}
 	err := c.FindObjectsFinal(pkcs11.SessionHandle(in.GetSessionHandle()))
 	return &p11.FindObjectsFinalResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -537,9 +467,9 @@ func (m *pkcs11Server) EncryptInit(ctx context.Context, in *p11.EncryptInitReque
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	err := c.EncryptInit(pkcs11.SessionHandle(in.GetSessionHandle()), reverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
+	err := c.EncryptInit(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.EncryptInitResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -552,7 +482,7 @@ func (m *pkcs11Server) Encrypt(ctx context.Context, in *p11.EncryptRequest) (*p1
 	encrypted, err := c.Encrypt(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetPlain())
 	return &p11.EncryptResponse{
 		Encrypted: encrypted,
-		Error:     uint32(err.(pkcs11.Error)),
+		Error:     errorToUint32(err),
 	}, err
 }
 
@@ -565,7 +495,7 @@ func (m *pkcs11Server) EncryptUpdate(ctx context.Context, in *p11.EncryptUpdateR
 	encrypted, err := c.EncryptUpdate(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.EncryptUpdateResponse{
 		Encrypted: encrypted,
-		Error:     uint32(err.(pkcs11.Error)),
+		Error:     errorToUint32(err),
 	}, err
 }
 
@@ -578,7 +508,7 @@ func (m *pkcs11Server) EncryptFinal(ctx context.Context, in *p11.EncryptFinalReq
 	encrypted, err := c.EncryptFinal(pkcs11.SessionHandle(in.GetSessionHandle()))
 	return &p11.EncryptFinalResponse{
 		Encrypted: encrypted,
-		Error:     uint32(err.(pkcs11.Error)),
+		Error:     errorToUint32(err),
 	}, err
 }
 
@@ -588,9 +518,9 @@ func (m *pkcs11Server) DecryptInit(ctx context.Context, in *p11.DecryptInitReque
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	err := c.DecryptInit(pkcs11.SessionHandle(in.GetSessionHandle()), reverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
+	err := c.DecryptInit(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.DecryptInitResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -603,7 +533,7 @@ func (m *pkcs11Server) Decrypt(ctx context.Context, in *p11.DecryptRequest) (*p1
 	plain, err := c.Decrypt(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetEncrypted())
 	return &p11.DecryptResponse{
 		Plain: plain,
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -616,7 +546,7 @@ func (m *pkcs11Server) DecryptUpdate(ctx context.Context, in *p11.DecryptUpdateR
 	plain, err := c.DecryptUpdate(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetEncrypted())
 	return &p11.DecryptUpdateResponse{
 		Plain: plain,
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -629,7 +559,7 @@ func (m *pkcs11Server) DecryptFinal(ctx context.Context, in *p11.DecryptFinalReq
 	plain, err := c.DecryptFinal(pkcs11.SessionHandle(in.GetSessionHandle()))
 	return &p11.DecryptFinalResponse{
 		Plain: plain,
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -639,9 +569,9 @@ func (m *pkcs11Server) DigestInit(ctx context.Context, in *p11.DigestInitRequest
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	err := c.DigestInit(pkcs11.SessionHandle(in.GetSessionHandle()), reverseMechanismsToMechanisms(in.GetMechanisms()))
+	err := c.DigestInit(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()))
 	return &p11.DigestInitResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -654,7 +584,7 @@ func (m *pkcs11Server) Digest(ctx context.Context, in *p11.DigestRequest) (*p11.
 	hashed, err := c.Digest(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.DigestResponse{
 		Hashed: hashed,
-		Error:  uint32(err.(pkcs11.Error)),
+		Error:  errorToUint32(err),
 	}, err
 }
 
@@ -666,7 +596,7 @@ func (m *pkcs11Server) DigestUpdate(ctx context.Context, in *p11.DigestUpdateReq
 	}
 	err := c.DigestUpdate(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.DigestUpdateResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -680,7 +610,7 @@ func (m *pkcs11Server) DigestKey(ctx context.Context, in *p11.DigestKeyRequest) 
 	}
 	err := c.DigestKey(pkcs11.SessionHandle(in.GetSessionHandle()), pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.DigestKeyResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -693,7 +623,7 @@ func (m *pkcs11Server) DigestFinal(ctx context.Context, in *p11.DigestFinalReque
 	hashed, err := c.DigestFinal(pkcs11.SessionHandle(in.GetSessionHandle()))
 	return &p11.DigestFinalResponse{
 		Hashed: hashed,
-		Error:  uint32(err.(pkcs11.Error)),
+		Error:  errorToUint32(err),
 	}, err
 }
 
@@ -705,9 +635,9 @@ func (m *pkcs11Server) SignInit(ctx context.Context, in *p11.SignInitRequest) (*
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	err := c.SignInit(pkcs11.SessionHandle(in.GetSessionHandle()), reverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
+	err := c.SignInit(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.SignInitResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -722,7 +652,7 @@ func (m *pkcs11Server) Sign(ctx context.Context, in *p11.SignRequest) (*p11.Sign
 	signature, err := c.Sign(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.SignResponse{
 		Signature: signature,
-		Error:     uint32(err.(pkcs11.Error)),
+		Error:     errorToUint32(err),
 	}, err
 }
 
@@ -736,7 +666,7 @@ func (m *pkcs11Server) SignUpdate(ctx context.Context, in *p11.SignUpdateRequest
 	}
 	err := c.SignUpdate(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.SignUpdateResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -750,7 +680,7 @@ func (m *pkcs11Server) SignFinal(ctx context.Context, in *p11.SignFinalRequest) 
 	signature, err := c.SignFinal(pkcs11.SessionHandle(in.GetSessionHandle()))
 	return &p11.SignFinalResponse{
 		Signature: signature,
-		Error:     uint32(err.(pkcs11.Error)),
+		Error:     errorToUint32(err),
 	}, err
 }
 
@@ -761,9 +691,9 @@ func (m *pkcs11Server) SignRecoverInit(ctx context.Context, in *p11.SignRecoverI
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	err := c.SignRecoverInit(pkcs11.SessionHandle(in.GetSessionHandle()), reverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
+	err := c.SignRecoverInit(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.SignRecoverInitResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -777,7 +707,7 @@ func (m *pkcs11Server) SignRecover(ctx context.Context, in *p11.SignRecoverReque
 	signature, err := c.SignRecover(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.SignRecoverResponse{
 		Signature: signature,
-		Error:     uint32(err.(pkcs11.Error)),
+		Error:     errorToUint32(err),
 	}, err
 }
 
@@ -789,9 +719,9 @@ func (m *pkcs11Server) VerifyInit(ctx context.Context, in *p11.VerifyInitRequest
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	err := c.VerifyInit(pkcs11.SessionHandle(in.GetSessionHandle()), reverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
+	err := c.VerifyInit(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.VerifyInitResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -805,7 +735,7 @@ func (m *pkcs11Server) Verify(ctx context.Context, in *p11.VerifyRequest) (*p11.
 	}
 	err := c.Verify(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage(), in.GetSignature())
 	return &p11.VerifyResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -819,7 +749,7 @@ func (m *pkcs11Server) VerifyUpdate(ctx context.Context, in *p11.VerifyUpdateReq
 	}
 	err := c.VerifyUpdate(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.VerifyUpdateResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -832,7 +762,7 @@ func (m *pkcs11Server) VerifyFinal(ctx context.Context, in *p11.VerifyFinalReque
 	}
 	err := c.VerifyFinal(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetSignature())
 	return &p11.VerifyFinalResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -843,9 +773,9 @@ func (m *pkcs11Server) VerifyRecoverInit(ctx context.Context, in *p11.VerifyReco
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	err := c.VerifyRecoverInit(pkcs11.SessionHandle(in.GetSessionHandle()), reverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
+	err := c.VerifyRecoverInit(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()), pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.VerifyRecoverInitResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -859,7 +789,7 @@ func (m *pkcs11Server) VerifyRecover(ctx context.Context, in *p11.VerifyRecoverR
 	data, err := c.VerifyRecover(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetSignature())
 	return &p11.VerifyRecoverResponse{
 		Data:  data,
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -873,7 +803,7 @@ func (m *pkcs11Server) DigestEncryptUpdate(ctx context.Context, in *p11.DigestEn
 	data, err := c.DigestEncryptUpdate(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.DigestEncryptUpdateResponse{
 		Hashed: data,
-		Error:  uint32(err.(pkcs11.Error)),
+		Error:  errorToUint32(err),
 	}, err
 }
 
@@ -887,7 +817,7 @@ func (m *pkcs11Server) DecryptDigestUpdate(ctx context.Context, in *p11.DecryptD
 	data, err := c.DecryptDigestUpdate(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.DecryptDigestUpdateResponse{
 		Encrypted: data,
-		Error:     uint32(err.(pkcs11.Error)),
+		Error:     errorToUint32(err),
 	}, err
 }
 
@@ -901,7 +831,7 @@ func (m *pkcs11Server) SignEncryptUpdate(ctx context.Context, in *p11.SignEncryp
 	data, err := c.SignEncryptUpdate(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetMessage())
 	return &p11.SignEncryptUpdateResponse{
 		Signature: data,
-		Error:     uint32(err.(pkcs11.Error)),
+		Error:     errorToUint32(err),
 	}, err
 }
 
@@ -915,7 +845,7 @@ func (m *pkcs11Server) DecryptVerifyUpdate(ctx context.Context, in *p11.DecryptV
 	data, err := c.DecryptVerifyUpdate(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetEncrypted())
 	return &p11.DecryptVerifyUpdateResponse{
 		Plain: data,
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -925,10 +855,10 @@ func (m *pkcs11Server) GenerateKey(ctx context.Context, in *p11.GenerateKeyReque
 	if !ok {
 		return nil, ErrCtxNotFound
 	}
-	handleID, err := c.GenerateKey(pkcs11.SessionHandle(in.GetSessionHandle()), reverseMechanismsToMechanisms(in.GetMechanisms()), reverseAttributesToAttributes(in.GetAttributes()))
+	handleID, err := c.GenerateKey(pkcs11.SessionHandle(in.GetSessionHandle()), pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()), pkg.ReverseAttributesToAttributes(in.GetAttributes()))
 	return &p11.GenerateKeyResponse{
 		HandleId: uint32(handleID),
-		Error:    uint32(err.(pkcs11.Error)),
+		Error:    errorToUint32(err),
 	}, err
 }
 
@@ -940,13 +870,13 @@ func (m *pkcs11Server) GenerateKeyPair(ctx context.Context, in *p11.GenerateKeyP
 		return nil, ErrCtxNotFound
 	}
 	handleID, phandleID, err := c.GenerateKeyPair(pkcs11.SessionHandle(in.GetSessionHandle()),
-		reverseMechanismsToMechanisms(in.GetMechanisms()),
-		reverseAttributesToAttributes(in.GetPublicAttributes()),
-		reverseAttributesToAttributes(in.GetPrivateAttributes()))
+		pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()),
+		pkg.ReverseAttributesToAttributes(in.GetPublicAttributes()),
+		pkg.ReverseAttributesToAttributes(in.GetPrivateAttributes()))
 	return &p11.GenerateKeyPairResponse{
 		PublicKeyHandleId:  uint32(handleID),
 		PrivateKeyHandleId: uint32(phandleID),
-		Error:              uint32(err.(pkcs11.Error)),
+		Error:              errorToUint32(err),
 	}, err
 }
 
@@ -957,12 +887,12 @@ func (m *pkcs11Server) WrapKey(ctx context.Context, in *p11.WrapKeyRequest) (*p1
 		return nil, ErrCtxNotFound
 	}
 	wrapped, err := c.WrapKey(pkcs11.SessionHandle(in.GetSessionHandle()),
-		reverseMechanismsToMechanisms(in.GetMechanisms()),
+		pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()),
 		pkcs11.ObjectHandle(in.GetWrappingHandleId()),
 		pkcs11.ObjectHandle(in.GetHandleId()))
 	return &p11.WrapKeyResponse{
 		WrappedKey: wrapped,
-		Error:      uint32(err.(pkcs11.Error)),
+		Error:      errorToUint32(err),
 	}, err
 }
 
@@ -973,13 +903,13 @@ func (m *pkcs11Server) UnwrapKey(ctx context.Context, in *p11.UnwrapKeyRequest) 
 		return nil, ErrCtxNotFound
 	}
 	unwrapped, err := c.UnwrapKey(pkcs11.SessionHandle(in.GetSessionHandle()),
-		reverseMechanismsToMechanisms(in.GetMechanisms()),
+		pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()),
 		pkcs11.ObjectHandle(in.GetWrappingHandleId()),
 		in.GetWrappedKey(),
-		reverseAttributesToAttributes(in.GetAttributes()))
+		pkg.ReverseAttributesToAttributes(in.GetAttributes()))
 	return &p11.UnwrapKeyResponse{
 		HandleId: uint32(unwrapped),
-		Error:    uint32(err.(pkcs11.Error)),
+		Error:    errorToUint32(err),
 	}, err
 }
 
@@ -990,12 +920,12 @@ func (m *pkcs11Server) DeriveKey(ctx context.Context, in *p11.DeriveKeyRequest) 
 		return nil, ErrCtxNotFound
 	}
 	unwrapped, err := c.DeriveKey(pkcs11.SessionHandle(in.GetSessionHandle()),
-		reverseMechanismsToMechanisms(in.GetMechanisms()),
+		pkg.ReverseMechanismsToMechanisms(in.GetMechanisms()),
 		pkcs11.ObjectHandle(in.GetHandleId()),
-		reverseAttributesToAttributes(in.GetAttributes()))
+		pkg.ReverseAttributesToAttributes(in.GetAttributes()))
 	return &p11.DeriveKeyResponse{
 		HandleId: uint32(unwrapped),
-		Error:    uint32(err.(pkcs11.Error)),
+		Error:    errorToUint32(err),
 	}, err
 }
 
@@ -1008,7 +938,7 @@ func (m *pkcs11Server) SeedRandom(ctx context.Context, in *p11.SeedRandomRequest
 	}
 	err := c.SeedRandom(pkcs11.SessionHandle(in.GetSessionHandle()), in.GetSeed())
 	return &p11.SeedRandomResponse{
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
@@ -1021,14 +951,24 @@ func (m *pkcs11Server) GenerateRandom(ctx context.Context, in *p11.GenerateRando
 	random, err := c.GenerateRandom(pkcs11.SessionHandle(in.GetSessionHandle()), int(in.GetLength()))
 	return &p11.GenerateRandomResponse{
 		Data:  random,
-		Error: uint32(err.(pkcs11.Error)),
+		Error: errorToUint32(err),
 	}, err
 }
 
 // WaitForSlotEvent returns a channel which returns a slot event
 // (token insertion, removal, etc.) when it occurs.
 func (m *pkcs11Server) WaitForSlotEvent(in *p11.WaitForSlotEventRequest, event p11.PKCS11_WaitForSlotEventServer) error {
-	// TODO
+	c, ok := m.ctxs[in.GetCtx()]
+	if !ok {
+		return ErrCtxNotFound
+	}
+	stream := c.WaitForSlotEvent(uint(in.GetFlags()))
+	for c := range stream {
+		event.SendMsg(&p11.SlotEvent{
+			SlotID: uint32(c.SlotID),
+		})
+	}
+	close(stream)
 	return nil
 }
 

@@ -1,5 +1,7 @@
 github.com/miekg/pkcs11 v1.1.1 h1:Ugu9pdy6vAYku5DEpVWVFPYnzV+bxB+iRdbuFSu7TvU=
 github.com/miekg/pkcs11 v1.1.1/go.mod h1:XsNlhZGX73bx86s2hdc/FuaLm2CPZJemRLMA+WTFxgs=
+github.com/namecoin/pkcs11mod v0.0.1 h1:UK2vnfdoQthfuKaBYrJs3AnyEK1S2tcb4aW1vaOPruQ=
+github.com/namecoin/pkcs11mod v0.0.1/go.mod h1:QoLd4U09mkv2P03epvTq+54XvgYV4+kPl63MDC93Hhw=
 golang.org/x/net v0.22.0 h1:9sGLhx7iRIHEiX0oAJ3MRZMUCElJgy7Br1nO+AMN3Tc=
 golang.org/x/net v0.22.0/go.mod h1:JKghWKKOSdJwpW2GEx0Ja7fmaKnMsbu+MWVZTokSYmg=
 golang.org/x/sys v0.18.0 h1:DBdB3niSjOA/O0blCZBqDefyWNYveAYMNF1Wum0DYQ4=
