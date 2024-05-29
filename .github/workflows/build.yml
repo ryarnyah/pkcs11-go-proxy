@@ -30,3 +30,4 @@ jobs:
           export PATH=$HOME/.local/bin:$HOME/protobuf/bin:$PATH
           make dev-dependencies
           make
+
