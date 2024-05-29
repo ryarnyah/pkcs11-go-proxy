@@ -6,20 +6,19 @@ clean:
 
 .PHONY: pkcs11-proxy-server
 pkcs11-proxy-server: protoc
-	go build -o pkcs11-proxy-server ./cmd/server
+	go build -buildvcs=false -o pkcs11-proxy-server ./cmd/server
 
 .PHONY: pkcs11-proxy-server.exe
 pkcs11-proxy-server.exe: protoc
-	CGO_ENABLED=1 CC=/usr/bin/x86_64-w64-mingw32-gcc GOOS=windows go build -o pkcs11-proxy-server.exe ./cmd/server
+	CGO_ENABLED=1 CC=/usr/bin/x86_64-w64-mingw32-gcc GOOS=windows go build -buildvcs=false -o pkcs11-proxy-server.exe ./cmd/server
 
 .PHONY: pkcs11-proxy-module.so
 pkcs11-proxy-module.so: protoc init
-	go build -o pkcs11-proxy-module.so -buildmode=c-shared ./cmd/module
+	go build -o pkcs11-proxy-module.so -buildvcs=false -buildmode=c-shared ./cmd/module
 
 .PHONY: protoc
 protoc: 
 	protoc -I proto/ \
-	--proto_path=${GOPATH}/src \
 	--go-grpc_out=pkcs11 \
 	--go_out=pkcs11 \
 	proto/schema.proto

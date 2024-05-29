@@ -1,6 +1,6 @@
 module github.com/ryarnyah/pkcs11-go-proxy
 
-go 1.21.3
+go 1.22.3
 
 require (
 	github.com/miekg/pkcs11 v1.1.1
