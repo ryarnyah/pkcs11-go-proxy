@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -11,6 +14,8 @@ import (
 	p11 "github.com/ryarnyah/pkcs11-go-proxy/pkcs11"
 	"github.com/ryarnyah/pkcs11-go-proxy/pkg"
 	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // ErrCtxNotFound raised when context can't be found.
@@ -981,6 +986,41 @@ func main() {
 		panic(err)
 	}
 
+	c := insecure.NewCredentials()
+	if os.Getenv("PKCS11_PROXY_KEY") != "" && os.Getenv("PKCS11_PROXY_CERT") != "" {
+		// Load the server certificate and its key
+		serverCert, err := tls.LoadX509KeyPair(os.Getenv("PKCS11_PROXY_CERT"), os.Getenv("PKCS11_PROXY_KEY"))
+		if err != nil {
+			log.Fatalf("Failed to load server certificate and key. %s.", err)
+		}
+		var certPool *x509.CertPool
+		if os.Getenv("PKCS11_PROXY_CACERT") != "" {
+			// Load the CA certificate
+			trustedCert, err := ioutil.ReadFile(os.Getenv("PKCS11_PROXY_CACERT"))
+			if err != nil {
+				log.Fatalf("Failed to load trusted certificate. %s.", err)
+			}
+
+			// Put the CA certificate to certificate pool
+			certPool = x509.NewCertPool()
+			if !certPool.AppendCertsFromPEM(trustedCert) {
+				log.Fatalf("Failed to append trusted certificate to certificate pool. %s.", err)
+			}
+		}
+		// Create the TLS configuration
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{serverCert},
+			RootCAs:      certPool,
+			ClientCAs:    certPool,
+			MinVersion:   tls.VersionTLS13,
+			MaxVersion:   tls.VersionTLS13,
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+		}
+
+		// Create a new TLS credentials based on the TLS configuration
+		c = credentials.NewTLS(tlsConfig)
+	}
+
 	errHandler := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		resp, err := handler(ctx, req)
 		if err != nil {
@@ -988,7 +1028,7 @@ func main() {
 		}
 		return resp, err
 	}
-	s := grpc.NewServer(grpc.UnaryInterceptor(errHandler))
+	s := grpc.NewServer(grpc.Creds(c), grpc.UnaryInterceptor(errHandler))
 	server := &pkcs11Server{
 		ctxs: make(map[string]*pkcs11.Ctx, 0),
 	}

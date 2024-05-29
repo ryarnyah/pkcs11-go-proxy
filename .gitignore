@@ -2,3 +2,9 @@ pkcs11-proxy-module.so
 pkcs11-proxy-module.h
 pkcs11-proxy-server
 pkcs11-proxy-server.exe
+*.crt
+*.key
+*.csr
+*.srl
+*.pem
+csr*.conf

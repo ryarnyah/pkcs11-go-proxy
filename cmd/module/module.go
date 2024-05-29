@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"crypto/tls"
+	"crypto/x509"
 	"io"
+	"io/ioutil"
+	"log"
 	"os"
 
 	"github.com/miekg/pkcs11"
@@ -11,6 +14,7 @@ import (
 	p11 "github.com/ryarnyah/pkcs11-go-proxy/pkcs11"
 	"github.com/ryarnyah/pkcs11-go-proxy/pkg"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -609,16 +613,54 @@ func (b *backend) WaitForSlotEvent(flags uint) chan pkcs11.SlotEvent {
 }
 
 func init() {
-	conn, err := grpc.Dial(os.Getenv("PKCS11_PROXY_URI"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	c := insecure.NewCredentials()
+	if os.Getenv("PKCS11_PROXY_KEY") != "" && os.Getenv("PKCS11_PROXY_CERT") != "" {
+		// Load the server certificate and its key
+		serverCert, err := tls.LoadX509KeyPair(os.Getenv("PKCS11_PROXY_CERT"), os.Getenv("PKCS11_PROXY_KEY"))
+		if err != nil {
+			log.Fatalf("Failed to load server certificate and key. %s.", err)
+		}
+		var certPool *x509.CertPool
+		if os.Getenv("PKCS11_PROXY_CACERT") != "" {
+			// Load the CA certificate
+			trustedCert, err := ioutil.ReadFile(os.Getenv("PKCS11_PROXY_CACERT"))
+			if err != nil {
+				log.Fatalf("Failed to load trusted certificate. %s.", err)
+			}
+
+			// Put the CA certificate to certificate pool
+			certPool = x509.NewCertPool()
+			if !certPool.AppendCertsFromPEM(trustedCert) {
+				log.Fatalf("Failed to append trusted certificate to certificate pool. %s.", err)
+			}
+		}
+		sni := "pkcs11-proxy-server.local"
+		if os.Getenv("PKCS11_PROXY_SNI") != "" {
+			sni = os.Getenv("PKCS11_PROXY_SNI")
+		}
+		// Create the TLS configuration
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{serverCert},
+			RootCAs:      certPool,
+			ClientCAs:    certPool,
+			MinVersion:   tls.VersionTLS13,
+			MaxVersion:   tls.VersionTLS13,
+			ServerName:   sni,
+		}
+
+		// Create a new TLS credentials based on the TLS configuration
+		c = credentials.NewTLS(tlsConfig)
+	}
+	conn, err := grpc.Dial(os.Getenv("PKCS11_PROXY_URI"), grpc.WithTransportCredentials(c))
 	if err != nil {
-		panic(fmt.Errorf("unable to connect to pkcs11 proxy using env PKCS11_PROXY_URI %s: %s", os.Getenv("PKCS11_PROXY_URI"), err))
+		log.Fatalf("unable to connect to pkcs11 proxy using env PKCS11_PROXY_URI %s: %s", os.Getenv("PKCS11_PROXY_URI"), err)
 	}
 	client := p11.NewPKCS11Client(conn)
 	response, err := client.New(context.Background(), &p11.NewRequest{
 		Module: os.Getenv("PKCS11_MODULE"),
 	})
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	pkcs11mod.SetBackend(&backend{
 		ctx:    response.Ctx,
