@@ -1,0 +1,772 @@
+syntax = "proto3";
+option go_package = "/;pkcs11";
+import "google/protobuf/any.proto";
+
+service PKCS11 {
+  // New creates a new context and initializes the module/library for use.
+  rpc New(NewRequest) returns (NewResponse) {}
+  // Destroy unloads the module/library and frees any remaining memory.
+  rpc Destroy(DestroyRequest) returns (EmptyResponse) {}
+  // Initialize initializes the Cryptoki library.
+  rpc Initialize(InitializeRequest) returns (InitializeResponse) {}
+  // Finalize indicates that an application is done with the Cryptoki library.
+  rpc Finalize(FinalizeRequest) returns (FinalizeResponse) {}
+  // GetInfo returns general information about Cryptoki.
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse) {}
+  // GetSlotList obtains a list of slots in the system.
+  rpc GetSlotList(GetSlotListRequest) returns (GetSlotListResponse) {}
+  // GetSlotInfo obtains information about a particular slot in the system.
+  rpc GetSlotInfo(GetSlotInfoRequest) returns (GetSlotInfoResponse) {}
+  // GetTokenInfo obtains information about a particular token
+  // in the system.
+  rpc GetTokenInfo(GetTokenInfoRequest) returns (GetTokenInfoResponse) {}
+  // GetMechanismList obtains a list of mechanism types supported by a token.
+  rpc GetMechanismList(GetMechanismListRequest)
+      returns (GetMechanismListResponse) {}
+  // GetMechanismInfo obtains information about a particular
+  // mechanism possibly supported by a token.
+  rpc GetMechanismInfo(GetMechanismInfoRequest)
+      returns (GetMechanismInfoResponse) {}
+  // InitToken initializes a token. The label must be 32 characters
+  // long, it is blank padded if it is not. If it is longer it is capped
+  // to 32 characters.
+  rpc InitToken(InitTokenRequest) returns (InitTokenResponse) {}
+  // InitPIN initializes the normal user's PIN.
+  rpc InitPIN(InitPINRequest) returns (InitPINResponse) {}
+  // SetPIN modifies the PIN of the user who is logged in.
+  rpc SetPIN(SetPINRequest) returns (SetPINResponse) {}
+  // OpenSession opens a session between an application and a token.
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse) {}
+  // CloseSession closes a session between an application and a token.
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse) {}
+  // CloseAllSessions closes all sessions with a token.
+  rpc CloseAllSessions(CloseAllSessionsRequest)
+      returns (CloseAllSessionsResponse) {}
+  // GetSessionInfo obtains information about the session.
+  rpc GetSessionInfo(GetSessionInfoRequest) returns (GetSessionInfoResponse) {}
+  // GetOperationState obtains the state of the cryptographic operation in a
+  // session.
+  rpc GetOperationState(GetOperationStateRequest)
+      returns (GetOperationStateResponse) {}
+  // SetOperationState restores the state of the cryptographic operation in a
+  // session.
+  rpc SetOperationState(SetOperationStateRequest)
+      returns (SetOperationStateResponse) {}
+  // Login logs a user into a token.
+  rpc Login(LoginRequest) returns (LoginResponse) {}
+  // Logout logs a user out from a token.
+  rpc Logout(LogoutRequest) returns (LogoutResponse) {}
+  // CreateObject creates a new object.
+  rpc CreateObject(CreateObjectRequest) returns (CreateObjectResponse) {}
+  // CopyObject copies an object, creating a new object for the copy.
+  rpc CopyObject(CopyObjectRequest) returns (CopyObjectResponse) {}
+  // DestroyObject destroys an object.
+  rpc DestroyObject(DestroyObjectRequest) returns (DestroyObjectResponse) {}
+  // GetObjectSize gets the size of an object in bytes.
+  rpc GetObjectSize(GetObjectSizeRequest) returns (GetObjectSizeResponse) {}
+  // GetAttributeValue obtains the value of one or more object attributes.
+  rpc GetAttributeValue(GetAttributeValueRequest)
+      returns (GetAttributeValueResponse) {}
+  // SetAttributeValue modifies the value of one or more object attributes
+  rpc SetAttributeValue(SetAttributeValueRequest)
+      returns (SetAttributeValueResponse) {}
+  // FindObjectsInit initializes a search for token and session
+  // objects that match a template.
+  rpc FindObjectsInit(FindObjectsInitRequest)
+      returns (FindObjectsInitResponse) {}
+  // FindObjects continues a search for token and session
+  // objects that match a template, obtaining additional object
+  // handles. Calling the function repeatedly may yield additional results until
+  // an empty slice is returned.
+  //
+  // The returned boolean value is deprecated and should be ignored.
+  rpc FindObjects(FindObjectsRequest) returns (FindObjectsResponse) {}
+  // FindObjectsFinal finishes a search for token and session objects.
+  rpc FindObjectsFinal(FindObjectsFinalRequest)
+      returns (FindObjectsFinalResponse) {}
+  // EncryptInit initializes an encryption operation.
+  rpc EncryptInit(EncryptInitRequest) returns (EncryptInitResponse) {}
+  // Encrypt encrypts single-part data.
+  rpc Encrypt(EncryptRequest) returns (EncryptResponse) {}
+  // EncryptUpdate continues a multiple-part encryption operation.
+  rpc EncryptUpdate(EncryptUpdateRequest) returns (EncryptUpdateResponse) {}
+  // EncryptFinal finishes a multiple-part encryption operation.
+  rpc EncryptFinal(EncryptFinalRequest) returns (EncryptFinalResponse) {}
+  // DecryptInit initializes a decryption operation.
+  rpc DecryptInit(DecryptInitRequest) returns (DecryptInitResponse) {}
+  // Decrypt decrypts encrypted data in a single part.
+  rpc Decrypt(DecryptRequest) returns (DecryptResponse) {}
+  // DecryptUpdate continues a multiple-part decryption operation.
+  rpc DecryptUpdate(DecryptUpdateRequest) returns (DecryptUpdateResponse) {}
+  // DecryptFinal finishes a multiple-part decryption operation.
+  rpc DecryptFinal(DecryptFinalRequest) returns (DecryptFinalResponse) {}
+  // DigestInit initializes a message-digesting operation.
+  rpc DigestInit(DigestInitRequest) returns (DigestInitResponse) {}
+  // Digest digests message in a single part.
+  rpc Digest(DigestRequest) returns (DigestResponse) {}
+  // DigestUpdate continues a multiple-part message-digesting operation.
+  rpc DigestUpdate(DigestUpdateRequest) returns (DigestUpdateResponse) {}
+  // DigestKey continues a multi-part message-digesting
+  // operation, by digesting the value of a secret key as part of
+  // the data already digested.
+  rpc DigestKey(DigestKeyRequest) returns (DigestKeyResponse) {}
+  // DigestFinal finishes a multiple-part message-digesting operation.
+  rpc DigestFinal(DigestFinalRequest) returns (DigestFinalResponse) {}
+  // SignInit initializes a signature (private key encryption)
+  // operation, where the signature is (will be) an appendix to
+  // the data, and plaintext cannot be recovered from the signature.
+  rpc SignInit(SignInitRequest) returns (SignInitResponse) {}
+  // Sign signs (encrypts with private key) data in a single part, where the
+  // signature is (will be) an appendix to the data, and plaintext cannot be
+  // recovered from the signature.
+  rpc Sign(SignRequest) returns (SignResponse) {}
+  // SignUpdate continues a multiple-part signature operation,
+  // where the signature is (will be) an appendix to the data,
+  // and plaintext cannot be recovered from the signature.
+  rpc SignUpdate(SignUpdateRequest) returns (SignUpdateResponse) {}
+  // SignFinal finishes a multiple-part signature operation returning the
+  // signature.
+  rpc SignFinal(SignFinalRequest) returns (SignFinalResponse) {}
+  // SignRecoverInit initializes a signature operation, where the data can be
+  // recovered from the signature.
+  rpc SignRecoverInit(SignRecoverInitRequest)
+      returns (SignRecoverInitResponse) {}
+  // SignRecover signs data in a single operation, where the data can be
+  // recovered from the signature.
+  rpc SignRecover(SignRecoverRequest) returns (SignRecoverResponse) {}
+  // VerifyInit initializes a verification operation, where the
+  // signature is an appendix to the data, and plaintext cannot
+  // be recovered from the signature (e.g. DSA).
+  rpc VerifyInit(VerifyInitRequest) returns (VerifyInitResponse) {}
+  // Verify verifies a signature in a single-part operation,
+  // where the signature is an appendix to the data, and plaintext
+  // cannot be recovered from the signature.
+  rpc Verify(VerifyRequest) returns (VerifyResponse) {}
+  // VerifyUpdate continues a multiple-part verification
+  // operation, where the signature is an appendix to the data,
+  // and plaintext cannot be recovered from the signature.
+  rpc VerifyUpdate(VerifyUpdateRequest) returns (VerifyUpdateResponse) {}
+  // VerifyFinal finishes a multiple-part verification
+  // operation, checking the signature.
+  rpc VerifyFinal(VerifyFinalRequest) returns (VerifyFinalResponse) {}
+  // VerifyRecoverInit initializes a signature verification
+  // operation, where the data is recovered from the signature.
+  rpc VerifyRecoverInit(VerifyRecoverInitRequest)
+      returns (VerifyRecoverInitResponse) {}
+  // VerifyRecover verifies a signature in a single-part
+  // operation, where the data is recovered from the signature.
+  rpc VerifyRecover(VerifyRecoverRequest) returns (VerifyRecoverResponse) {}
+  // DigestEncryptUpdate continues a multiple-part digesting and encryption
+  // operation.
+  rpc DigestEncryptUpdate(DigestEncryptUpdateRequest)
+      returns (DigestEncryptUpdateResponse) {}
+  // DecryptDigestUpdate continues a multiple-part decryption and digesting
+  // operation.
+  rpc DecryptDigestUpdate(DecryptDigestUpdateRequest)
+      returns (DecryptDigestUpdateResponse) {}
+  // SignEncryptUpdate continues a multiple-part signing and encryption
+  // operation.
+  rpc SignEncryptUpdate(SignEncryptUpdateRequest)
+      returns (SignEncryptUpdateResponse) {}
+  // DecryptVerifyUpdate continues a multiple-part decryption and verify
+  // operation.
+  rpc DecryptVerifyUpdate(DecryptVerifyUpdateRequest)
+      returns (DecryptVerifyUpdateResponse) {}
+  // GenerateKey generates a secret key, creating a new key object.
+  rpc GenerateKey(GenerateKeyRequest) returns (GenerateKeyResponse) {}
+  // GenerateKeyPair generates a public-key/private-key pair creating new key
+  // objects.
+  rpc GenerateKeyPair(GenerateKeyPairRequest)
+      returns (GenerateKeyPairResponse) {}
+  // WrapKey wraps (i.e., encrypts) a key.
+  rpc WrapKey(WrapKeyRequest) returns (WrapKeyResponse) {}
+  // UnwrapKey unwraps (decrypts) a wrapped key, creating a new key object.
+  rpc UnwrapKey(UnwrapKeyRequest) returns (UnwrapKeyResponse) {}
+  // DeriveKey derives a key from a base key, creating a new key object.
+  rpc DeriveKey(DeriveKeyRequest) returns (DeriveKeyResponse) {}
+  // SeedRandom mixes additional seed material into the token's
+  // random number generator.
+  rpc SeedRandom(SeedRandomRequest) returns (SeedRandomResponse) {}
+  // GenerateRandom generates random data.
+  rpc GenerateRandom(GenerateRandomRequest) returns (GenerateRandomResponse) {}
+  // WaitForSlotEvent returns a channel which returns a slot event
+  // (token insertion, removal, etc.) when it occurs.
+  rpc WaitForSlotEvent(WaitForSlotEventRequest) returns (stream SlotEvent) {}
+}
+
+message WaitForSlotEventRequest {
+  uint64 ctx = 1;
+  uint32 flags = 2;
+}
+message GenerateRandomResponse {
+  bytes data = 1;
+  uint32 error = 2;
+}
+message GenerateRandomRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  uint32 length = 3;
+}
+message SeedRandomResponse { uint32 error = 1; }
+message SeedRandomRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes seed = 3;
+}
+message DeriveKeyResponse {
+  uint32 handle_id = 1;
+  uint32 error = 2;
+}
+message DeriveKeyRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  uint32 handle_id = 4;
+  repeated Attribute attributes = 5;
+}
+message UnwrapKeyResponse {
+  uint32 handle_id = 1;
+  uint32 error = 2;
+}
+message UnwrapKeyRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  uint32 wrapping_handle_id = 4;
+  bytes wrapped_key = 5;
+  repeated Attribute attributes = 6;
+}
+message WrapKeyResponse {
+  bytes wrapped_key = 1;
+  uint32 error = 2;
+}
+message WrapKeyRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  uint32 wrapping_handle_id = 4;
+  uint32 handle_id = 5;
+}
+message GenerateKeyPairResponse {
+  uint32 public_key_handle_id = 1;
+  uint32 private_key_handle_id = 3;
+  uint32 error = 4;
+}
+message GenerateKeyPairRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  repeated Attribute public_attributes = 4;
+  repeated Attribute private_attributes = 5;
+}
+message GenerateKeyResponse {
+  uint32 handle_id = 1;
+  uint32 error = 2;
+}
+message GenerateKeyRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  repeated Attribute attributes = 4;
+}
+message DecryptVerifyUpdateResponse {
+  bytes plain = 1;
+  uint32 error = 2;
+}
+message DecryptVerifyUpdateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes encrypted = 3;
+}
+message SignEncryptUpdateResponse {
+  bytes signature = 1;
+  uint32 error = 2;
+}
+message SignEncryptUpdateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message DecryptDigestUpdateResponse {
+  bytes encrypted = 1;
+  uint32 error = 2;
+}
+message DecryptDigestUpdateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message DigestEncryptUpdateResponse {
+  bytes hashed = 1;
+  uint32 error = 2;
+}
+message DigestEncryptUpdateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message VerifyRecoverResponse {
+  bytes data = 1;
+  uint32 error = 2;
+}
+message VerifyRecoverRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes signature = 3;
+}
+message VerifyRecoverInitResponse { uint32 error = 1; }
+message VerifyRecoverInitRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  uint32 handle_id = 4;
+}
+message VerifyFinalResponse { uint32 error = 1; }
+message VerifyFinalRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes signature = 3;
+}
+message VerifyUpdateResponse { uint32 error = 1; }
+message VerifyUpdateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message VerifyResponse { uint32 error = 1; }
+message VerifyRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+  bytes signature = 4;
+}
+message VerifyInitResponse { uint32 error = 1; }
+message VerifyInitRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  uint32 handle_id = 4;
+}
+message SignRecoverResponse {
+  bytes signature = 1;
+  uint32 error = 2;
+}
+message SignRecoverRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message SignRecoverInitResponse { uint32 error = 1; }
+message SignRecoverInitRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  uint32 handle_id = 4;
+}
+message SignFinalResponse {
+  bytes signature = 1;
+  uint32 error = 2;
+}
+message SignFinalRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+}
+message SignUpdateResponse { uint32 error = 1; }
+message SignUpdateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message SignResponse {
+  bytes signature = 1;
+  uint32 error = 2;
+}
+message SignRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message SignInitResponse { uint32 error = 1; }
+message SignInitRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  uint32 handle_id = 4;
+}
+message DigestFinalResponse {
+  bytes hashed = 1;
+  uint32 error = 2;
+}
+message DigestFinalRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+}
+message DigestKeyResponse { uint32 error = 1; }
+message DigestKeyRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  uint32 handle_id = 3;
+}
+message DigestUpdateResponse {
+  bytes hashed = 1;
+  uint32 error = 2;
+}
+message DigestUpdateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message DigestResponse {
+  bytes hashed = 1;
+  uint32 error = 2;
+}
+message DigestRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message DigestInitResponse { uint32 error = 1; }
+message DigestInitRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+}
+message DecryptFinalResponse {
+  bytes plain = 1;
+  uint32 error = 2;
+}
+message DecryptFinalRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+}
+message DecryptUpdateResponse {
+  bytes plain = 1;
+  uint32 error = 2;
+}
+message DecryptUpdateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes encrypted = 3;
+}
+message DecryptResponse {
+  bytes plain = 1;
+  uint32 error = 2;
+}
+message DecryptRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes encrypted = 3;
+}
+message DecryptInitResponse { uint32 error = 1; }
+message DecryptInitRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  uint32 handle_id = 4;
+}
+message EncryptFinalResponse {
+  bytes encrypted = 1;
+  uint32 error = 2;
+}
+message EncryptFinalRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+}
+message EncryptUpdateResponse {
+  bytes encrypted = 1;
+  uint32 error = 2;
+}
+message EncryptUpdateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes message = 3;
+}
+message EncryptResponse {
+  bytes encrypted = 1;
+  uint32 error = 2;
+}
+message EncryptRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes plain = 3;
+}
+message EncryptInitResponse { uint32 error = 1; }
+message EncryptInitRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Mechanism mechanisms = 3;
+  uint32 handle_id = 4;
+}
+message FindObjectsFinalResponse { uint32 error = 1; }
+message FindObjectsFinalRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+}
+message FindObjectsResponse {
+  repeated uint32 handle_ids = 1;
+  bool has_more = 2;
+  uint32 error = 3;
+}
+message FindObjectsRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  uint32 max = 3;
+}
+message FindObjectsInitResponse { uint32 error = 1; }
+message FindObjectsInitRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Attribute attributes = 3;
+}
+message SetAttributeValueResponse { uint32 error = 1; }
+message SetAttributeValueRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  uint32 handle_id = 3;
+  repeated Attribute attributes = 4;
+}
+message GetAttributeValueResponse {
+  repeated Attribute attributes = 1;
+  uint32 error = 2;
+}
+message GetAttributeValueRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  uint32 handle_id = 3;
+  repeated Attribute attributes = 4;
+}
+message GetObjectSizeResponse {
+  uint32 size = 1;
+  uint32 error = 2;
+}
+message GetObjectSizeRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  uint32 handle_id = 3;
+  repeated Attribute attributes = 4;
+}
+message DestroyObjectResponse { uint32 error = 1; }
+message DestroyObjectRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  uint32 handle_id = 3;
+}
+message CopyObjectResponse {
+  uint32 handle_id = 1;
+  uint32 error = 2;
+}
+message CopyObjectRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  uint32 handle_id = 3;
+  repeated Attribute attributes = 4;
+}
+message CreateObjectResponse {
+  uint32 handle_id = 1;
+  uint32 error = 2;
+}
+message CreateObjectRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  repeated Attribute attributes = 3;
+}
+message LogoutResponse { uint32 error = 1; }
+message LogoutRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+}
+message LoginResponse { uint32 error = 1; }
+message LoginRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  uint32 user_type = 3;
+  string pin = 4;
+}
+message SetOperationStateResponse {
+    uint32 error = 1;
+}
+message SetOperationStateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  bytes state = 3;
+  uint32 encrypt_key = 4;
+  uint32 auth_key = 5;
+}
+message GetOperationStateResponse {
+  bytes state = 1;
+  uint32 error = 2;
+}
+message GetOperationStateRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+}
+message GetSessionInfoResponse {
+  SessionInfo info = 1;
+  uint32 error = 2;
+}
+message GetSessionInfoRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+}
+message CloseAllSessionsResponse { uint32 error = 1; }
+message CloseAllSessionsRequest {
+  uint64 ctx = 1;
+  uint32 slot_id = 2;
+}
+message CloseSessionResponse { uint32 error = 1; }
+message CloseSessionRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+}
+message OpenSessionResponse {
+  uint32 session_handle = 1;
+  uint32 error = 2;
+}
+message OpenSessionRequest {
+  uint64 ctx = 1;
+  uint32 slot_id = 2;
+  uint32 flags = 3;
+}
+message SetPINResponse { uint32 error = 1; }
+message SetPINRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  string old_pin = 3;
+  string new_pin = 4;
+}
+message InitPINResponse { uint32 error = 1; }
+message InitPINRequest {
+  uint64 ctx = 1;
+  uint32 session_handle = 2;
+  string pin = 3;
+}
+message InitTokenResponse { uint32 error = 1; }
+message InitTokenRequest {
+  uint64 ctx = 1;
+  uint32 slot_id = 2;
+  string pin = 3;
+  string label = 4;
+}
+message GetMechanismInfoResponse {
+  MechanismInfo info = 1;
+  uint32 error = 2;
+}
+message GetMechanismInfoRequest {
+  uint64 ctx = 1;
+  uint32 slot_id = 2;
+  repeated Mechanism mechanisms = 3;
+}
+message GetMechanismListResponse {
+  repeated Mechanism mechanisms = 1;
+  uint32 error = 2;
+}
+message GetMechanismListRequest {
+  uint64 ctx = 1;
+  uint32 slot_id = 2;
+}
+message GetTokenInfoResponse {
+  TokenInfo info = 1;
+  uint32 error = 2;
+}
+message GetTokenInfoRequest {
+  uint64 ctx = 1;
+  uint32 slot_id = 2;
+}
+
+message GetSlotInfoResponse {
+  SlotInfo info = 1;
+  uint32 error = 2;
+}
+message GetSlotInfoRequest {
+  uint64 ctx = 1;
+  uint32 slot_id = 2;
+}
+message GetSlotListResponse {
+  repeated uint32 slot_ids = 1;
+  uint32 error = 2;
+}
+message GetSlotListRequest {
+  uint64 ctx = 1;
+  bool token_present = 2;
+}
+message InitializeRequest { uint64 ctx = 1; }
+message InitializeResponse { uint32 error = 1; }
+message FinalizeRequest { uint64 ctx = 1; }
+message FinalizeResponse { uint32 error = 1; }
+message GetInfoRequest { uint64 ctx = 1; }
+message GetInfoResponse {
+  Info info = 1;
+  uint32 error = 2;
+}
+message DestroyRequest { uint64 ctx = 1; }
+message ErrorAwareResponse { uint32 error = 1; }
+message NewRequest { string module = 1; }
+message NewResponse { uint64 ctx = 1; }
+
+message EmptyRequest {}
+message EmptyResponse {}
+
+message Version { bytes MajorMinor = 1; }
+
+message Info {
+  Version CryptokiVersion = 1;
+  string ManufacturerID = 2;
+  uint64 Flags = 3;
+  string LibraryDescription = 4;
+  Version LibraryVersion = 5;
+}
+
+message SlotInfo {
+  string SlotDescription = 1;
+  string ManufacturerID = 2;
+  uint32 Flags = 3;
+  Version HardwareVersion = 4;
+  Version FirmwareVersion = 5;
+}
+
+message TokenInfo {
+  string Label = 1;
+  string ManufacturerID = 2;
+  string Model = 3;
+  string SerialNumber = 4;
+  uint32 Flags = 5;
+  uint32 MaxSessionCount = 6;
+  uint32 SessionCount = 7;
+  uint32 MaxRwSessionCount = 8;
+  uint32 RwSessionCount = 9;
+  uint32 MaxPinLen = 10;
+  uint32 MinPinLen = 11;
+  uint32 TotalPublicMemory = 12;
+  uint32 FreePublicMemory = 13;
+  uint32 TotalPrivateMemory = 14;
+  uint32 FreePrivateMemory = 15;
+  Version HardwareVersion = 16;
+  Version FirmwareVersion = 17;
+  string UTCTime = 18;
+}
+
+message Mechanism {
+  uint32 Mechanism = 1;
+  bytes Parameter = 2;
+  google.protobuf.Any generator = 3;
+}
+
+message MechanismInfo {
+  uint32 MinKeySize = 1;
+  uint32 MaxKeySize = 2;
+  uint32 Flags = 3;
+}
+
+message SessionInfo {
+  uint32 SlotID = 1;
+  uint32 State = 2;
+  uint32 Flags = 3;
+  uint32 DeviceError = 4;
+}
+
+message Attribute {
+  uint32 Type = 1;
+  bytes Value = 2;
+}
+
+message SlotEvent { uint32 SlotID = 1; }
