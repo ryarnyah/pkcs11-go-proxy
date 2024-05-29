@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
+	"net"
+	"os"
 	"sync/atomic"
 
 	"github.com/miekg/pkcs11"
@@ -21,7 +24,7 @@ type pkcs11Server struct {
 }
 
 // New creates a new context and initializes the module/library for use.
-func (m *pkcs11Server) New(ctx context.Context, in *p11.NewRequest, opts ...grpc.CallOption) (*p11.NewResponse, error) {
+func (m *pkcs11Server) New(ctx context.Context, in *p11.NewRequest) (*p11.NewResponse, error) {
 	p := pkcs11.New(in.GetModule())
 	ctxID := m.ctxIDs.Add(1)
 	m.ctxs[ctxID] = p
@@ -31,7 +34,7 @@ func (m *pkcs11Server) New(ctx context.Context, in *p11.NewRequest, opts ...grpc
 }
 
 // Destroy unloads the module/library and frees any remaining memory.
-func (m *pkcs11Server) Destroy(ctx context.Context, in *p11.DestroyRequest, opts ...grpc.CallOption) (*p11.EmptyResponse, error) {
+func (m *pkcs11Server) Destroy(ctx context.Context, in *p11.DestroyRequest) (*p11.EmptyResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -42,7 +45,7 @@ func (m *pkcs11Server) Destroy(ctx context.Context, in *p11.DestroyRequest, opts
 }
 
 // Initialize initializes the Cryptoki library.
-func (m *pkcs11Server) Initialize(ctx context.Context, in *p11.InitializeRequest, opts ...grpc.CallOption) (*p11.InitializeResponse, error) {
+func (m *pkcs11Server) Initialize(ctx context.Context, in *p11.InitializeRequest) (*p11.InitializeResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -54,7 +57,7 @@ func (m *pkcs11Server) Initialize(ctx context.Context, in *p11.InitializeRequest
 }
 
 // Finalize indicates that an application is done with the Cryptoki library.
-func (m *pkcs11Server) Finalize(ctx context.Context, in *p11.FinalizeRequest, opts ...grpc.CallOption) (*p11.FinalizeResponse, error) {
+func (m *pkcs11Server) Finalize(ctx context.Context, in *p11.FinalizeRequest) (*p11.FinalizeResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -66,7 +69,7 @@ func (m *pkcs11Server) Finalize(ctx context.Context, in *p11.FinalizeRequest, op
 }
 
 // GetInfo returns general information about Cryptoki.
-func (m *pkcs11Server) GetInfo(ctx context.Context, in *p11.GetInfoRequest, opts ...grpc.CallOption) (*p11.GetInfoResponse, error) {
+func (m *pkcs11Server) GetInfo(ctx context.Context, in *p11.GetInfoRequest) (*p11.GetInfoResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -107,7 +110,7 @@ func versionToVersion(v pkcs11.Version) *p11.Version {
 }
 
 // GetSlotList obtains a list of slots in the system.
-func (m *pkcs11Server) GetSlotList(ctx context.Context, in *p11.GetSlotListRequest, opts ...grpc.CallOption) (*p11.GetSlotListResponse, error) {
+func (m *pkcs11Server) GetSlotList(ctx context.Context, in *p11.GetSlotListRequest) (*p11.GetSlotListResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -120,7 +123,7 @@ func (m *pkcs11Server) GetSlotList(ctx context.Context, in *p11.GetSlotListReque
 }
 
 // GetSlotInfo obtains information about a particular slot in the system.
-func (m *pkcs11Server) GetSlotInfo(ctx context.Context, in *p11.GetSlotInfoRequest, opts ...grpc.CallOption) (*p11.GetSlotInfoResponse, error) {
+func (m *pkcs11Server) GetSlotInfo(ctx context.Context, in *p11.GetSlotInfoRequest) (*p11.GetSlotInfoResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -140,7 +143,7 @@ func (m *pkcs11Server) GetSlotInfo(ctx context.Context, in *p11.GetSlotInfoReque
 
 // GetTokenInfo obtains information about a particular token
 // in the system.
-func (m *pkcs11Server) GetTokenInfo(ctx context.Context, in *p11.GetTokenInfoRequest, opts ...grpc.CallOption) (*p11.GetTokenInfoResponse, error) {
+func (m *pkcs11Server) GetTokenInfo(ctx context.Context, in *p11.GetTokenInfoRequest) (*p11.GetTokenInfoResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -204,7 +207,7 @@ func reverseMechanismsToMechanisms(m []*p11.Mechanism) []*pkcs11.Mechanism {
 }
 
 // GetMechanismList obtains a list of mechanism types supported by a token.
-func (m *pkcs11Server) GetMechanismList(ctx context.Context, in *p11.GetMechanismListRequest, opts ...grpc.CallOption) (*p11.GetMechanismListResponse, error) {
+func (m *pkcs11Server) GetMechanismList(ctx context.Context, in *p11.GetMechanismListRequest) (*p11.GetMechanismListResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -218,7 +221,7 @@ func (m *pkcs11Server) GetMechanismList(ctx context.Context, in *p11.GetMechanis
 
 // GetMechanismInfo obtains information about a particular
 // mechanism possibly supported by a token.
-func (m *pkcs11Server) GetMechanismInfo(ctx context.Context, in *p11.GetMechanismInfoRequest, opts ...grpc.CallOption) (*p11.GetMechanismInfoResponse, error) {
+func (m *pkcs11Server) GetMechanismInfo(ctx context.Context, in *p11.GetMechanismInfoRequest) (*p11.GetMechanismInfoResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -237,7 +240,7 @@ func (m *pkcs11Server) GetMechanismInfo(ctx context.Context, in *p11.GetMechanis
 // InitToken initializes a token. The label must be 32 characters
 // long, it is blank padded if it is not. If it is longer it is capped
 // to 32 characters.
-func (m *pkcs11Server) InitToken(ctx context.Context, in *p11.InitTokenRequest, opts ...grpc.CallOption) (*p11.InitTokenResponse, error) {
+func (m *pkcs11Server) InitToken(ctx context.Context, in *p11.InitTokenRequest) (*p11.InitTokenResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -249,7 +252,7 @@ func (m *pkcs11Server) InitToken(ctx context.Context, in *p11.InitTokenRequest, 
 }
 
 // InitPIN initializes the normal user's PIN.
-func (m *pkcs11Server) InitPIN(ctx context.Context, in *p11.InitPINRequest, opts ...grpc.CallOption) (*p11.InitPINResponse, error) {
+func (m *pkcs11Server) InitPIN(ctx context.Context, in *p11.InitPINRequest) (*p11.InitPINResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -261,7 +264,7 @@ func (m *pkcs11Server) InitPIN(ctx context.Context, in *p11.InitPINRequest, opts
 }
 
 // SetPIN modifies the PIN of the user who is logged in.
-func (m *pkcs11Server) SetPIN(ctx context.Context, in *p11.SetPINRequest, opts ...grpc.CallOption) (*p11.SetPINResponse, error) {
+func (m *pkcs11Server) SetPIN(ctx context.Context, in *p11.SetPINRequest) (*p11.SetPINResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -273,7 +276,7 @@ func (m *pkcs11Server) SetPIN(ctx context.Context, in *p11.SetPINRequest, opts .
 }
 
 // OpenSession opens a session between an application and a token.
-func (m *pkcs11Server) OpenSession(ctx context.Context, in *p11.OpenSessionRequest, opts ...grpc.CallOption) (*p11.OpenSessionResponse, error) {
+func (m *pkcs11Server) OpenSession(ctx context.Context, in *p11.OpenSessionRequest) (*p11.OpenSessionResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -286,7 +289,7 @@ func (m *pkcs11Server) OpenSession(ctx context.Context, in *p11.OpenSessionReque
 }
 
 // CloseSession closes a session between an application and a token.
-func (m *pkcs11Server) CloseSession(ctx context.Context, in *p11.CloseSessionRequest, opts ...grpc.CallOption) (*p11.CloseSessionResponse, error) {
+func (m *pkcs11Server) CloseSession(ctx context.Context, in *p11.CloseSessionRequest) (*p11.CloseSessionResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -298,7 +301,7 @@ func (m *pkcs11Server) CloseSession(ctx context.Context, in *p11.CloseSessionReq
 }
 
 // CloseAllSessions closes all sessions with a token.
-func (m *pkcs11Server) CloseAllSessions(ctx context.Context, in *p11.CloseAllSessionsRequest, opts ...grpc.CallOption) (*p11.CloseAllSessionsResponse, error) {
+func (m *pkcs11Server) CloseAllSessions(ctx context.Context, in *p11.CloseAllSessionsRequest) (*p11.CloseAllSessionsResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -310,7 +313,7 @@ func (m *pkcs11Server) CloseAllSessions(ctx context.Context, in *p11.CloseAllSes
 }
 
 // GetSessionInfo obtains information about the session.
-func (m *pkcs11Server) GetSessionInfo(ctx context.Context, in *p11.GetSessionInfoRequest, opts ...grpc.CallOption) (*p11.GetSessionInfoResponse, error) {
+func (m *pkcs11Server) GetSessionInfo(ctx context.Context, in *p11.GetSessionInfoRequest) (*p11.GetSessionInfoResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -329,7 +332,7 @@ func (m *pkcs11Server) GetSessionInfo(ctx context.Context, in *p11.GetSessionInf
 
 // GetOperationState obtains the state of the cryptographic operation in a
 // session.
-func (m *pkcs11Server) GetOperationState(ctx context.Context, in *p11.GetOperationStateRequest, opts ...grpc.CallOption) (*p11.GetOperationStateResponse, error) {
+func (m *pkcs11Server) GetOperationState(ctx context.Context, in *p11.GetOperationStateRequest) (*p11.GetOperationStateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -343,7 +346,7 @@ func (m *pkcs11Server) GetOperationState(ctx context.Context, in *p11.GetOperati
 
 // SetOperationState restores the state of the cryptographic operation in a
 // session.
-func (m *pkcs11Server) SetOperationState(ctx context.Context, in *p11.SetOperationStateRequest, opts ...grpc.CallOption) (*p11.SetOperationStateResponse, error) {
+func (m *pkcs11Server) SetOperationState(ctx context.Context, in *p11.SetOperationStateRequest) (*p11.SetOperationStateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -355,7 +358,7 @@ func (m *pkcs11Server) SetOperationState(ctx context.Context, in *p11.SetOperati
 }
 
 // Login logs a user into a token.
-func (m *pkcs11Server) Login(ctx context.Context, in *p11.LoginRequest, opts ...grpc.CallOption) (*p11.LoginResponse, error) {
+func (m *pkcs11Server) Login(ctx context.Context, in *p11.LoginRequest) (*p11.LoginResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -367,7 +370,7 @@ func (m *pkcs11Server) Login(ctx context.Context, in *p11.LoginRequest, opts ...
 }
 
 // Logout logs a user out from a token.
-func (m *pkcs11Server) Logout(ctx context.Context, in *p11.LogoutRequest, opts ...grpc.CallOption) (*p11.LogoutResponse, error) {
+func (m *pkcs11Server) Logout(ctx context.Context, in *p11.LogoutRequest) (*p11.LogoutResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -409,7 +412,7 @@ func reverseAttributesToAttributes(a []*p11.Attribute) []*pkcs11.Attribute {
 }
 
 // CreateObject creates a new object.
-func (m *pkcs11Server) CreateObject(ctx context.Context, in *p11.CreateObjectRequest, opts ...grpc.CallOption) (*p11.CreateObjectResponse, error) {
+func (m *pkcs11Server) CreateObject(ctx context.Context, in *p11.CreateObjectRequest) (*p11.CreateObjectResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -422,7 +425,7 @@ func (m *pkcs11Server) CreateObject(ctx context.Context, in *p11.CreateObjectReq
 }
 
 // CopyObject copies an object, creating a new object for the copy.
-func (m *pkcs11Server) CopyObject(ctx context.Context, in *p11.CopyObjectRequest, opts ...grpc.CallOption) (*p11.CopyObjectResponse, error) {
+func (m *pkcs11Server) CopyObject(ctx context.Context, in *p11.CopyObjectRequest) (*p11.CopyObjectResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -435,7 +438,7 @@ func (m *pkcs11Server) CopyObject(ctx context.Context, in *p11.CopyObjectRequest
 }
 
 // DestroyObject destroys an object.
-func (m *pkcs11Server) DestroyObject(ctx context.Context, in *p11.DestroyObjectRequest, opts ...grpc.CallOption) (*p11.DestroyObjectResponse, error) {
+func (m *pkcs11Server) DestroyObject(ctx context.Context, in *p11.DestroyObjectRequest) (*p11.DestroyObjectResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -447,7 +450,7 @@ func (m *pkcs11Server) DestroyObject(ctx context.Context, in *p11.DestroyObjectR
 }
 
 // GetObjectSize gets the size of an object in bytes.
-func (m *pkcs11Server) GetObjectSize(ctx context.Context, in *p11.GetObjectSizeRequest, opts ...grpc.CallOption) (*p11.GetObjectSizeResponse, error) {
+func (m *pkcs11Server) GetObjectSize(ctx context.Context, in *p11.GetObjectSizeRequest) (*p11.GetObjectSizeResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -460,7 +463,7 @@ func (m *pkcs11Server) GetObjectSize(ctx context.Context, in *p11.GetObjectSizeR
 }
 
 // GetAttributeValue obtains the value of one or more object attributes.
-func (m *pkcs11Server) GetAttributeValue(ctx context.Context, in *p11.GetAttributeValueRequest, opts ...grpc.CallOption) (*p11.GetAttributeValueResponse, error) {
+func (m *pkcs11Server) GetAttributeValue(ctx context.Context, in *p11.GetAttributeValueRequest) (*p11.GetAttributeValueResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -473,7 +476,7 @@ func (m *pkcs11Server) GetAttributeValue(ctx context.Context, in *p11.GetAttribu
 }
 
 // SetAttributeValue modifies the value of one or more object attributes
-func (m *pkcs11Server) SetAttributeValue(ctx context.Context, in *p11.SetAttributeValueRequest, opts ...grpc.CallOption) (*p11.SetAttributeValueResponse, error) {
+func (m *pkcs11Server) SetAttributeValue(ctx context.Context, in *p11.SetAttributeValueRequest) (*p11.SetAttributeValueResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -486,7 +489,7 @@ func (m *pkcs11Server) SetAttributeValue(ctx context.Context, in *p11.SetAttribu
 
 // FindObjectsInit initializes a search for token and session
 // objects that match a template.
-func (m *pkcs11Server) FindObjectsInit(ctx context.Context, in *p11.FindObjectsInitRequest, opts ...grpc.CallOption) (*p11.FindObjectsInitResponse, error) {
+func (m *pkcs11Server) FindObjectsInit(ctx context.Context, in *p11.FindObjectsInitRequest) (*p11.FindObjectsInitResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -503,7 +506,7 @@ func (m *pkcs11Server) FindObjectsInit(ctx context.Context, in *p11.FindObjectsI
 // an empty slice is returned.
 //
 // The returned boolean value is deprecated and should be ignored.
-func (m *pkcs11Server) FindObjects(ctx context.Context, in *p11.FindObjectsRequest, opts ...grpc.CallOption) (*p11.FindObjectsResponse, error) {
+func (m *pkcs11Server) FindObjects(ctx context.Context, in *p11.FindObjectsRequest) (*p11.FindObjectsResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -517,7 +520,7 @@ func (m *pkcs11Server) FindObjects(ctx context.Context, in *p11.FindObjectsReque
 }
 
 // FindObjectsFinal finishes a search for token and session objects.
-func (m *pkcs11Server) FindObjectsFinal(ctx context.Context, in *p11.FindObjectsFinalRequest, opts ...grpc.CallOption) (*p11.FindObjectsFinalResponse, error) {
+func (m *pkcs11Server) FindObjectsFinal(ctx context.Context, in *p11.FindObjectsFinalRequest) (*p11.FindObjectsFinalResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -529,7 +532,7 @@ func (m *pkcs11Server) FindObjectsFinal(ctx context.Context, in *p11.FindObjects
 }
 
 // EncryptInit initializes an encryption operation.
-func (m *pkcs11Server) EncryptInit(ctx context.Context, in *p11.EncryptInitRequest, opts ...grpc.CallOption) (*p11.EncryptInitResponse, error) {
+func (m *pkcs11Server) EncryptInit(ctx context.Context, in *p11.EncryptInitRequest) (*p11.EncryptInitResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -541,7 +544,7 @@ func (m *pkcs11Server) EncryptInit(ctx context.Context, in *p11.EncryptInitReque
 }
 
 // Encrypt encrypts single-part data.
-func (m *pkcs11Server) Encrypt(ctx context.Context, in *p11.EncryptRequest, opts ...grpc.CallOption) (*p11.EncryptResponse, error) {
+func (m *pkcs11Server) Encrypt(ctx context.Context, in *p11.EncryptRequest) (*p11.EncryptResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -554,7 +557,7 @@ func (m *pkcs11Server) Encrypt(ctx context.Context, in *p11.EncryptRequest, opts
 }
 
 // EncryptUpdate continues a multiple-part encryption operation.
-func (m *pkcs11Server) EncryptUpdate(ctx context.Context, in *p11.EncryptUpdateRequest, opts ...grpc.CallOption) (*p11.EncryptUpdateResponse, error) {
+func (m *pkcs11Server) EncryptUpdate(ctx context.Context, in *p11.EncryptUpdateRequest) (*p11.EncryptUpdateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -567,7 +570,7 @@ func (m *pkcs11Server) EncryptUpdate(ctx context.Context, in *p11.EncryptUpdateR
 }
 
 // EncryptFinal finishes a multiple-part encryption operation.
-func (m *pkcs11Server) EncryptFinal(ctx context.Context, in *p11.EncryptFinalRequest, opts ...grpc.CallOption) (*p11.EncryptFinalResponse, error) {
+func (m *pkcs11Server) EncryptFinal(ctx context.Context, in *p11.EncryptFinalRequest) (*p11.EncryptFinalResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -580,7 +583,7 @@ func (m *pkcs11Server) EncryptFinal(ctx context.Context, in *p11.EncryptFinalReq
 }
 
 // DecryptInit initializes a decryption operation.
-func (m *pkcs11Server) DecryptInit(ctx context.Context, in *p11.DecryptInitRequest, opts ...grpc.CallOption) (*p11.DecryptInitResponse, error) {
+func (m *pkcs11Server) DecryptInit(ctx context.Context, in *p11.DecryptInitRequest) (*p11.DecryptInitResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -592,7 +595,7 @@ func (m *pkcs11Server) DecryptInit(ctx context.Context, in *p11.DecryptInitReque
 }
 
 // Decrypt decrypts encrypted data in a single part.
-func (m *pkcs11Server) Decrypt(ctx context.Context, in *p11.DecryptRequest, opts ...grpc.CallOption) (*p11.DecryptResponse, error) {
+func (m *pkcs11Server) Decrypt(ctx context.Context, in *p11.DecryptRequest) (*p11.DecryptResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -605,7 +608,7 @@ func (m *pkcs11Server) Decrypt(ctx context.Context, in *p11.DecryptRequest, opts
 }
 
 // DecryptUpdate continues a multiple-part decryption operation.
-func (m *pkcs11Server) DecryptUpdate(ctx context.Context, in *p11.DecryptUpdateRequest, opts ...grpc.CallOption) (*p11.DecryptUpdateResponse, error) {
+func (m *pkcs11Server) DecryptUpdate(ctx context.Context, in *p11.DecryptUpdateRequest) (*p11.DecryptUpdateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -618,7 +621,7 @@ func (m *pkcs11Server) DecryptUpdate(ctx context.Context, in *p11.DecryptUpdateR
 }
 
 // DecryptFinal finishes a multiple-part decryption operation.
-func (m *pkcs11Server) DecryptFinal(ctx context.Context, in *p11.DecryptFinalRequest, opts ...grpc.CallOption) (*p11.DecryptFinalResponse, error) {
+func (m *pkcs11Server) DecryptFinal(ctx context.Context, in *p11.DecryptFinalRequest) (*p11.DecryptFinalResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -631,7 +634,7 @@ func (m *pkcs11Server) DecryptFinal(ctx context.Context, in *p11.DecryptFinalReq
 }
 
 // DigestInit initializes a message-digesting operation.
-func (m *pkcs11Server) DigestInit(ctx context.Context, in *p11.DigestInitRequest, opts ...grpc.CallOption) (*p11.DigestInitResponse, error) {
+func (m *pkcs11Server) DigestInit(ctx context.Context, in *p11.DigestInitRequest) (*p11.DigestInitResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -643,7 +646,7 @@ func (m *pkcs11Server) DigestInit(ctx context.Context, in *p11.DigestInitRequest
 }
 
 // Digest digests message in a single part.
-func (m *pkcs11Server) Digest(ctx context.Context, in *p11.DigestRequest, opts ...grpc.CallOption) (*p11.DigestResponse, error) {
+func (m *pkcs11Server) Digest(ctx context.Context, in *p11.DigestRequest) (*p11.DigestResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -656,7 +659,7 @@ func (m *pkcs11Server) Digest(ctx context.Context, in *p11.DigestRequest, opts .
 }
 
 // DigestUpdate continues a multiple-part message-digesting operation.
-func (m *pkcs11Server) DigestUpdate(ctx context.Context, in *p11.DigestUpdateRequest, opts ...grpc.CallOption) (*p11.DigestUpdateResponse, error) {
+func (m *pkcs11Server) DigestUpdate(ctx context.Context, in *p11.DigestUpdateRequest) (*p11.DigestUpdateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -670,7 +673,7 @@ func (m *pkcs11Server) DigestUpdate(ctx context.Context, in *p11.DigestUpdateReq
 // DigestKey continues a multi-part message-digesting
 // operation, by digesting the value of a secret key as part of
 // the data already digested.
-func (m *pkcs11Server) DigestKey(ctx context.Context, in *p11.DigestKeyRequest, opts ...grpc.CallOption) (*p11.DigestKeyResponse, error) {
+func (m *pkcs11Server) DigestKey(ctx context.Context, in *p11.DigestKeyRequest) (*p11.DigestKeyResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -682,7 +685,7 @@ func (m *pkcs11Server) DigestKey(ctx context.Context, in *p11.DigestKeyRequest, 
 }
 
 // DigestFinal finishes a multiple-part message-digesting operation.
-func (m *pkcs11Server) DigestFinal(ctx context.Context, in *p11.DigestFinalRequest, opts ...grpc.CallOption) (*p11.DigestFinalResponse, error) {
+func (m *pkcs11Server) DigestFinal(ctx context.Context, in *p11.DigestFinalRequest) (*p11.DigestFinalResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -697,7 +700,7 @@ func (m *pkcs11Server) DigestFinal(ctx context.Context, in *p11.DigestFinalReque
 // SignInit initializes a signature (private key encryption)
 // operation, where the signature is (will be) an appendix to
 // the data, and plaintext cannot be recovered from the signature.
-func (m *pkcs11Server) SignInit(ctx context.Context, in *p11.SignInitRequest, opts ...grpc.CallOption) (*p11.SignInitResponse, error) {
+func (m *pkcs11Server) SignInit(ctx context.Context, in *p11.SignInitRequest) (*p11.SignInitResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -711,7 +714,7 @@ func (m *pkcs11Server) SignInit(ctx context.Context, in *p11.SignInitRequest, op
 // Sign signs (encrypts with private key) data in a single part, where the
 // signature is (will be) an appendix to the data, and plaintext cannot be
 // recovered from the signature.
-func (m *pkcs11Server) Sign(ctx context.Context, in *p11.SignRequest, opts ...grpc.CallOption) (*p11.SignResponse, error) {
+func (m *pkcs11Server) Sign(ctx context.Context, in *p11.SignRequest) (*p11.SignResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -726,7 +729,7 @@ func (m *pkcs11Server) Sign(ctx context.Context, in *p11.SignRequest, opts ...gr
 // SignUpdate continues a multiple-part signature operation,
 // where the signature is (will be) an appendix to the data,
 // and plaintext cannot be recovered from the signature.
-func (m *pkcs11Server) SignUpdate(ctx context.Context, in *p11.SignUpdateRequest, opts ...grpc.CallOption) (*p11.SignUpdateResponse, error) {
+func (m *pkcs11Server) SignUpdate(ctx context.Context, in *p11.SignUpdateRequest) (*p11.SignUpdateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -739,7 +742,7 @@ func (m *pkcs11Server) SignUpdate(ctx context.Context, in *p11.SignUpdateRequest
 
 // SignFinal finishes a multiple-part signature operation returning the
 // signature.
-func (m *pkcs11Server) SignFinal(ctx context.Context, in *p11.SignFinalRequest, opts ...grpc.CallOption) (*p11.SignFinalResponse, error) {
+func (m *pkcs11Server) SignFinal(ctx context.Context, in *p11.SignFinalRequest) (*p11.SignFinalResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -753,7 +756,7 @@ func (m *pkcs11Server) SignFinal(ctx context.Context, in *p11.SignFinalRequest, 
 
 // SignRecoverInit initializes a signature operation, where the data can be
 // recovered from the signature.
-func (m *pkcs11Server) SignRecoverInit(ctx context.Context, in *p11.SignRecoverInitRequest, opts ...grpc.CallOption) (*p11.SignRecoverInitResponse, error) {
+func (m *pkcs11Server) SignRecoverInit(ctx context.Context, in *p11.SignRecoverInitRequest) (*p11.SignRecoverInitResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -766,7 +769,7 @@ func (m *pkcs11Server) SignRecoverInit(ctx context.Context, in *p11.SignRecoverI
 
 // SignRecover signs data in a single operation, where the data can be
 // recovered from the signature.
-func (m *pkcs11Server) SignRecover(ctx context.Context, in *p11.SignRecoverRequest, opts ...grpc.CallOption) (*p11.SignRecoverResponse, error) {
+func (m *pkcs11Server) SignRecover(ctx context.Context, in *p11.SignRecoverRequest) (*p11.SignRecoverResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -781,7 +784,7 @@ func (m *pkcs11Server) SignRecover(ctx context.Context, in *p11.SignRecoverReque
 // VerifyInit initializes a verification operation, where the
 // signature is an appendix to the data, and plaintext cannot
 // be recovered from the signature (e.g. DSA).
-func (m *pkcs11Server) VerifyInit(ctx context.Context, in *p11.VerifyInitRequest, opts ...grpc.CallOption) (*p11.VerifyInitResponse, error) {
+func (m *pkcs11Server) VerifyInit(ctx context.Context, in *p11.VerifyInitRequest) (*p11.VerifyInitResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -795,7 +798,7 @@ func (m *pkcs11Server) VerifyInit(ctx context.Context, in *p11.VerifyInitRequest
 // Verify verifies a signature in a single-part operation,
 // where the signature is an appendix to the data, and plaintext
 // cannot be recovered from the signature.
-func (m *pkcs11Server) Verify(ctx context.Context, in *p11.VerifyRequest, opts ...grpc.CallOption) (*p11.VerifyResponse, error) {
+func (m *pkcs11Server) Verify(ctx context.Context, in *p11.VerifyRequest) (*p11.VerifyResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -809,7 +812,7 @@ func (m *pkcs11Server) Verify(ctx context.Context, in *p11.VerifyRequest, opts .
 // VerifyUpdate continues a multiple-part verification
 // operation, where the signature is an appendix to the data,
 // and plaintext cannot be recovered from the signature.
-func (m *pkcs11Server) VerifyUpdate(ctx context.Context, in *p11.VerifyUpdateRequest, opts ...grpc.CallOption) (*p11.VerifyUpdateResponse, error) {
+func (m *pkcs11Server) VerifyUpdate(ctx context.Context, in *p11.VerifyUpdateRequest) (*p11.VerifyUpdateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -822,7 +825,7 @@ func (m *pkcs11Server) VerifyUpdate(ctx context.Context, in *p11.VerifyUpdateReq
 
 // VerifyFinal finishes a multiple-part verification
 // operation, checking the signature.
-func (m *pkcs11Server) VerifyFinal(ctx context.Context, in *p11.VerifyFinalRequest, opts ...grpc.CallOption) (*p11.VerifyFinalResponse, error) {
+func (m *pkcs11Server) VerifyFinal(ctx context.Context, in *p11.VerifyFinalRequest) (*p11.VerifyFinalResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -835,7 +838,7 @@ func (m *pkcs11Server) VerifyFinal(ctx context.Context, in *p11.VerifyFinalReque
 
 // VerifyRecoverInit initializes a signature verification
 // operation, where the data is recovered from the signature.
-func (m *pkcs11Server) VerifyRecoverInit(ctx context.Context, in *p11.VerifyRecoverInitRequest, opts ...grpc.CallOption) (*p11.VerifyRecoverInitResponse, error) {
+func (m *pkcs11Server) VerifyRecoverInit(ctx context.Context, in *p11.VerifyRecoverInitRequest) (*p11.VerifyRecoverInitResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -848,7 +851,7 @@ func (m *pkcs11Server) VerifyRecoverInit(ctx context.Context, in *p11.VerifyReco
 
 // VerifyRecover verifies a signature in a single-part
 // operation, where the data is recovered from the signature.
-func (m *pkcs11Server) VerifyRecover(ctx context.Context, in *p11.VerifyRecoverRequest, opts ...grpc.CallOption) (*p11.VerifyRecoverResponse, error) {
+func (m *pkcs11Server) VerifyRecover(ctx context.Context, in *p11.VerifyRecoverRequest) (*p11.VerifyRecoverResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -862,7 +865,7 @@ func (m *pkcs11Server) VerifyRecover(ctx context.Context, in *p11.VerifyRecoverR
 
 // DigestEncryptUpdate continues a multiple-part digesting and encryption
 // operation.
-func (m *pkcs11Server) DigestEncryptUpdate(ctx context.Context, in *p11.DigestEncryptUpdateRequest, opts ...grpc.CallOption) (*p11.DigestEncryptUpdateResponse, error) {
+func (m *pkcs11Server) DigestEncryptUpdate(ctx context.Context, in *p11.DigestEncryptUpdateRequest) (*p11.DigestEncryptUpdateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -876,7 +879,7 @@ func (m *pkcs11Server) DigestEncryptUpdate(ctx context.Context, in *p11.DigestEn
 
 // DecryptDigestUpdate continues a multiple-part decryption and digesting
 // operation.
-func (m *pkcs11Server) DecryptDigestUpdate(ctx context.Context, in *p11.DecryptDigestUpdateRequest, opts ...grpc.CallOption) (*p11.DecryptDigestUpdateResponse, error) {
+func (m *pkcs11Server) DecryptDigestUpdate(ctx context.Context, in *p11.DecryptDigestUpdateRequest) (*p11.DecryptDigestUpdateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -890,7 +893,7 @@ func (m *pkcs11Server) DecryptDigestUpdate(ctx context.Context, in *p11.DecryptD
 
 // SignEncryptUpdate continues a multiple-part signing and encryption
 // operation.
-func (m *pkcs11Server) SignEncryptUpdate(ctx context.Context, in *p11.SignEncryptUpdateRequest, opts ...grpc.CallOption) (*p11.SignEncryptUpdateResponse, error) {
+func (m *pkcs11Server) SignEncryptUpdate(ctx context.Context, in *p11.SignEncryptUpdateRequest) (*p11.SignEncryptUpdateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -904,7 +907,7 @@ func (m *pkcs11Server) SignEncryptUpdate(ctx context.Context, in *p11.SignEncryp
 
 // DecryptVerifyUpdate continues a multiple-part decryption and verify
 // operation.
-func (m *pkcs11Server) DecryptVerifyUpdate(ctx context.Context, in *p11.DecryptVerifyUpdateRequest, opts ...grpc.CallOption) (*p11.DecryptVerifyUpdateResponse, error) {
+func (m *pkcs11Server) DecryptVerifyUpdate(ctx context.Context, in *p11.DecryptVerifyUpdateRequest) (*p11.DecryptVerifyUpdateResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -917,7 +920,7 @@ func (m *pkcs11Server) DecryptVerifyUpdate(ctx context.Context, in *p11.DecryptV
 }
 
 // GenerateKey generates a secret key, creating a new key object.
-func (m *pkcs11Server) GenerateKey(ctx context.Context, in *p11.GenerateKeyRequest, opts ...grpc.CallOption) (*p11.GenerateKeyResponse, error) {
+func (m *pkcs11Server) GenerateKey(ctx context.Context, in *p11.GenerateKeyRequest) (*p11.GenerateKeyResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -931,7 +934,7 @@ func (m *pkcs11Server) GenerateKey(ctx context.Context, in *p11.GenerateKeyReque
 
 // GenerateKeyPair generates a public-key/private-key pair creating new key
 // objects.
-func (m *pkcs11Server) GenerateKeyPair(ctx context.Context, in *p11.GenerateKeyPairRequest, opts ...grpc.CallOption) (*p11.GenerateKeyPairResponse, error) {
+func (m *pkcs11Server) GenerateKeyPair(ctx context.Context, in *p11.GenerateKeyPairRequest) (*p11.GenerateKeyPairResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -948,7 +951,7 @@ func (m *pkcs11Server) GenerateKeyPair(ctx context.Context, in *p11.GenerateKeyP
 }
 
 // WrapKey wraps (i.e., encrypts) a key.
-func (m *pkcs11Server) WrapKey(ctx context.Context, in *p11.WrapKeyRequest, opts ...grpc.CallOption) (*p11.WrapKeyResponse, error) {
+func (m *pkcs11Server) WrapKey(ctx context.Context, in *p11.WrapKeyRequest) (*p11.WrapKeyResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -964,7 +967,7 @@ func (m *pkcs11Server) WrapKey(ctx context.Context, in *p11.WrapKeyRequest, opts
 }
 
 // UnwrapKey unwraps (decrypts) a wrapped key, creating a new key object.
-func (m *pkcs11Server) UnwrapKey(ctx context.Context, in *p11.UnwrapKeyRequest, opts ...grpc.CallOption) (*p11.UnwrapKeyResponse, error) {
+func (m *pkcs11Server) UnwrapKey(ctx context.Context, in *p11.UnwrapKeyRequest) (*p11.UnwrapKeyResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -981,7 +984,7 @@ func (m *pkcs11Server) UnwrapKey(ctx context.Context, in *p11.UnwrapKeyRequest, 
 }
 
 // DeriveKey derives a key from a base key, creating a new key object.
-func (m *pkcs11Server) DeriveKey(ctx context.Context, in *p11.DeriveKeyRequest, opts ...grpc.CallOption) (*p11.DeriveKeyResponse, error) {
+func (m *pkcs11Server) DeriveKey(ctx context.Context, in *p11.DeriveKeyRequest) (*p11.DeriveKeyResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -998,7 +1001,7 @@ func (m *pkcs11Server) DeriveKey(ctx context.Context, in *p11.DeriveKeyRequest, 
 
 // SeedRandom mixes additional seed material into the token's
 // random number generator.
-func (m *pkcs11Server) SeedRandom(ctx context.Context, in *p11.SeedRandomRequest, opts ...grpc.CallOption) (*p11.SeedRandomResponse, error) {
+func (m *pkcs11Server) SeedRandom(ctx context.Context, in *p11.SeedRandomRequest) (*p11.SeedRandomResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -1010,7 +1013,7 @@ func (m *pkcs11Server) SeedRandom(ctx context.Context, in *p11.SeedRandomRequest
 }
 
 // GenerateRandom generates random data.
-func (m *pkcs11Server) GenerateRandom(ctx context.Context, in *p11.GenerateRandomRequest, opts ...grpc.CallOption) (*p11.GenerateRandomResponse, error) {
+func (m *pkcs11Server) GenerateRandom(ctx context.Context, in *p11.GenerateRandomRequest) (*p11.GenerateRandomResponse, error) {
 	c, ok := m.ctxs[in.GetCtx()]
 	if !ok {
 		return nil, ErrCtxNotFound
@@ -1024,11 +1027,23 @@ func (m *pkcs11Server) GenerateRandom(ctx context.Context, in *p11.GenerateRando
 
 // WaitForSlotEvent returns a channel which returns a slot event
 // (token insertion, removal, etc.) when it occurs.
-func (m *pkcs11Server) WaitForSlotEvent(ctx context.Context, in *p11.WaitForSlotEventRequest, opts ...grpc.CallOption) (p11.PKCS11_WaitForSlotEventClient, error) {
+func (m *pkcs11Server) WaitForSlotEvent(in *p11.WaitForSlotEventRequest, event p11.PKCS11_WaitForSlotEventServer) error {
 	// TODO
-	return nil, nil
+	return nil
 }
 
 func main() {
+	listener, err := net.Listen("tcp", os.Getenv("PKCS11_PROXY_URI"))
+	if err != nil {
+		panic(err)
+	}
 
+	s := grpc.NewServer()
+	server := &pkcs11Server{
+		ctxs: make(map[uint64]*pkcs11.Ctx, 0),
+	}
+	p11.RegisterPKCS11Server(s, server)
+	if err := s.Serve(listener); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 }
