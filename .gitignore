@@ -1,4 +1,5 @@
 pkcs11-proxy-module.so
+pkcs11-proxy-module.dll
 pkcs11-proxy-module.h
 pkcs11-proxy-server
 pkcs11-proxy-server.exe
