@@ -43,8 +43,8 @@ p11tool --provider=$(pwd)/pkcs11-proxy-module.so --list-mechanisms
 ### Example usage
 ```bash
 # Install softhsm2
-sudo apt-get update
-sudo apt-get install -y softhsm2 gnutls-bin curl
+apt-get update
+apt-get install -y softhsm2 gnutls-bin curl
 # Initialize softhsm2 token
 mkdir -p $HOME/.local/softhsm2/tokens
 cat > $HOME/.softhsm2.conf <<EOF
@@ -65,11 +65,11 @@ slots.mechanisms = ALL
 # If the library should reset the state on fork
 library.reset_on_fork = false
 EOF
-softhsm2-util --init-token --slot 0 --label "My token 1" --pin 1234 --so-pin 1234
 export SOFTHSM2_CONF=$HOME/.softhsm2.conf
+softhsm2-util --init-token --slot 0 --label "My token 1" --pin 1234 --so-pin 1234
 # Install server
 curl -LO https://github.com/ryarnyah/pkcs11-go-proxy/releases/latest/download/spkcs11-proxy-server
-chmod +x pkcs11-proxy-server
+chmod +x spkcs11-proxy-server
 
 # Install client
 curl -LO https://github.com/ryarnyah/pkcs11-go-proxy/releases/latest/download/spkcs11-proxy-module.so
@@ -85,9 +85,11 @@ export PKCS11_PROXY_URI="localhost:8080"
 export PKCS11_PROXY_CACERT=$(pwd)/ca.crt
 export PKCS11_PROXY_KEY=$(pwd)/server.key
 export PKCS11_PROXY_CERT=$(pwd)/server.crt
-./pkcs11-proxy-server &
+./spkcs11-proxy-server &
+timeout 22 bash -c 'until printf "" 2>>/dev/null >>/dev/tcp/$0/$1; do sleep 1; done' localhost 8080
 
 # Test client
+unset SOFTHSM2_CONF
 export PKCS11_PROXY_URI="localhost:8080"
 export PKCS11_PROXY_CACERT=$(pwd)/ca.crt
 export PKCS11_PROXY_KEY=$(pwd)/client.key
