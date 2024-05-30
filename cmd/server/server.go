@@ -16,8 +16,10 @@ import (
 	p11 "github.com/ryarnyah/pkcs11-go-proxy/pkcs11"
 	"github.com/ryarnyah/pkcs11-go-proxy/pkg"
 	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // ErrCtxNotFound raised when context can't be found.
@@ -1038,6 +1040,10 @@ func main() {
 	errHandler := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		resp, err := handler(ctx, req)
 		if err != nil {
+			var pe pkcs11.Error
+			if errors.As(err, &pe) {
+				err = status.Error(codes.Code(pe), err.Error())
+			}
 			log.Printf("method %q failed: %s", info.FullMethod, err)
 		}
 		return resp, err

@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 type backend struct {
@@ -651,7 +652,17 @@ func init() {
 		// Create a new TLS credentials based on the TLS configuration
 		c = credentials.NewTLS(tlsConfig)
 	}
-	conn, err := grpc.Dial(os.Getenv("PKCS11_PROXY_URI"), grpc.WithTransportCredentials(c))
+	errHandler := func(ctx context.Context, method string, req, resp interface{}, info *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		err := invoker(ctx, method, req, resp, info, opts...)
+		if err != nil {
+			s := status.Convert(err)
+			if s != nil {
+				err = pkcs11.Error(s.Code())
+			}
+		}
+		return err
+	}
+	conn, err := grpc.Dial(os.Getenv("PKCS11_PROXY_URI"), grpc.WithTransportCredentials(c), grpc.WithUnaryInterceptor(errHandler))
 	if err != nil {
 		log.Fatalf("unable to connect to pkcs11 proxy using env PKCS11_PROXY_URI %s: %s", os.Getenv("PKCS11_PROXY_URI"), err)
 	}
