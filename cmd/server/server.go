@@ -987,7 +987,6 @@ func (m *pkcs11Server) WaitForSlotEvent(in *p11.WaitForSlotEventRequest, event p
 			SlotID: uint32(c.SlotID),
 		})
 	}
-	close(stream)
 	return nil
 }
 

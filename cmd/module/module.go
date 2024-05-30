@@ -34,6 +34,9 @@ func (b *backend) Finalize() error {
 }
 func (b *backend) GetInfo() (pkcs11.Info, error) {
 	response, err := b.client.GetInfo(context.Background(), &p11.GetInfoRequest{Ctx: b.ctx})
+	if err != nil {
+		return pkcs11.Info{}, err
+	}
 	return pkcs11.Info{
 		CryptokiVersion: pkcs11.Version{
 			Major: response.GetInfo().GetCryptokiVersion().GetMajorMinor()[0],
@@ -46,7 +49,7 @@ func (b *backend) GetInfo() (pkcs11.Info, error) {
 			Major: response.GetInfo().GetLibraryVersion().GetMajorMinor()[0],
 			Minor: response.GetInfo().GetLibraryVersion().GetMajorMinor()[1],
 		},
-	}, err
+	}, nil
 }
 func (b *backend) GetSlotList(tokenPresent bool) ([]uint, error) {
 	response, err := b.client.GetSlotList(context.Background(), &p11.GetSlotListRequest{
@@ -60,6 +63,9 @@ func (b *backend) GetSlotInfo(slotID uint) (pkcs11.SlotInfo, error) {
 		Ctx:    b.ctx,
 		SlotId: uint32(slotID),
 	})
+	if err != nil {
+		return pkcs11.SlotInfo{}, err
+	}
 	return pkcs11.SlotInfo{
 		SlotDescription: response.GetInfo().GetSlotDescription(),
 		ManufacturerID:  response.GetInfo().GetManufacturerID(),
@@ -72,13 +78,16 @@ func (b *backend) GetSlotInfo(slotID uint) (pkcs11.SlotInfo, error) {
 			Major: response.GetInfo().GetFirmwareVersion().GetMajorMinor()[0],
 			Minor: response.GetInfo().GetFirmwareVersion().GetMajorMinor()[1],
 		},
-	}, err
+	}, nil
 }
 func (b *backend) GetTokenInfo(slotID uint) (pkcs11.TokenInfo, error) {
 	response, err := b.client.GetTokenInfo(context.Background(), &p11.GetTokenInfoRequest{
 		Ctx:    b.ctx,
 		SlotId: uint32(slotID),
 	})
+	if err != nil {
+		return pkcs11.TokenInfo{}, err
+	}
 	return pkcs11.TokenInfo{
 		Label:              response.GetInfo().GetLabel(),
 		ManufacturerID:     response.GetInfo().GetManufacturerID(),
@@ -104,7 +113,7 @@ func (b *backend) GetTokenInfo(slotID uint) (pkcs11.TokenInfo, error) {
 			Minor: response.GetInfo().GetFirmwareVersion().GetMajorMinor()[1],
 		},
 		UTCTime: response.GetInfo().GetUTCTime(),
-	}, err
+	}, nil
 }
 func (b *backend) GetMechanismList(slotID uint) ([]*pkcs11.Mechanism, error) {
 	response, err := b.client.GetMechanismList(context.Background(), &p11.GetMechanismListRequest{
@@ -119,11 +128,14 @@ func (b *backend) GetMechanismInfo(slotID uint, m []*pkcs11.Mechanism) (pkcs11.M
 		SlotId:     uint32(slotID),
 		Mechanisms: pkg.MechanismsToMechanisms(m),
 	})
+	if err != nil {
+		return pkcs11.MechanismInfo{}, err
+	}
 	return pkcs11.MechanismInfo{
 		MinKeySize: uint(response.GetInfo().GetMinKeySize()),
 		MaxKeySize: uint(response.GetInfo().GetMaxKeySize()),
 		Flags:      uint(response.GetInfo().GetFlags()),
-	}, err
+	}, nil
 }
 func (b *backend) InitPIN(handle pkcs11.SessionHandle, pin string) error {
 	_, err := b.client.InitPIN(context.Background(), &p11.InitPINRequest{
@@ -169,12 +181,15 @@ func (b *backend) GetSessionInfo(handle pkcs11.SessionHandle) (pkcs11.SessionInf
 		Ctx:           b.ctx,
 		SessionHandle: uint32(handle),
 	})
+	if err != nil {
+		return pkcs11.SessionInfo{}, err
+	}
 	return pkcs11.SessionInfo{
 		SlotID:      uint(response.GetInfo().GetSlotID()),
 		State:       uint(response.GetInfo().GetState()),
 		Flags:       uint(response.GetInfo().GetFlags()),
 		DeviceError: uint(response.GetInfo().GetDeviceError()),
-	}, err
+	}, nil
 }
 func (b *backend) GetOperationState(handle pkcs11.SessionHandle) ([]byte, error) {
 	response, err := b.client.GetOperationState(context.Background(), &p11.GetOperationStateRequest{
