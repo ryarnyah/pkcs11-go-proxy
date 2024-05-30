@@ -9,6 +9,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/miekg/pkcs11"
 	p11 "github.com/ryarnyah/pkcs11-go-proxy/pkcs11"
@@ -19,16 +21,23 @@ import (
 )
 
 // ErrCtxNotFound raised when context can't be found.
-var ErrCtxNotFound = errors.New("Context not found")
+var ErrCtxNotFound = errors.New("context not found")
+
+// ErrModuleNotAllowed raised when module is not allowlist.
+var ErrModuleNotAllowed = errors.New("module not allowed")
 
 type pkcs11Server struct {
 	ctxs map[string]*pkcs11.Ctx
 
+	allowedModules []string
 	p11.UnimplementedPKCS11Server
 }
 
 // New creates a new context and initializes the module/library for use.
 func (m *pkcs11Server) New(ctx context.Context, in *p11.NewRequest) (*p11.NewResponse, error) {
+	if len(m.allowedModules) > 0 && !slices.Contains(m.allowedModules, in.GetModule()) {
+		return nil, ErrModuleNotAllowed
+	}
 	c, ok := m.ctxs[in.GetModule()]
 	if ok {
 		c.Finalize()
@@ -1021,6 +1030,11 @@ func main() {
 		c = credentials.NewTLS(tlsConfig)
 	}
 
+	allowedModules := []string{}
+	if os.Getenv("PKCS11_PROXY_ALLOWED_MODULES") != "" {
+		allowedModules = strings.Split(os.Getenv("PKCS11_PROXY_ALLOWED_MODULES"), ";")
+	}
+
 	errHandler := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		resp, err := handler(ctx, req)
 		if err != nil {
@@ -1030,7 +1044,8 @@ func main() {
 	}
 	s := grpc.NewServer(grpc.Creds(c), grpc.UnaryInterceptor(errHandler))
 	server := &pkcs11Server{
-		ctxs: make(map[string]*pkcs11.Ctx, 0),
+		ctxs:           make(map[string]*pkcs11.Ctx, 0),
+		allowedModules: allowedModules,
 	}
 	p11.RegisterPKCS11Server(s, server)
 	if err := s.Serve(listener); err != nil {
