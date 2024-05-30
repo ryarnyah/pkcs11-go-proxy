@@ -2,6 +2,8 @@
 
 Can be used to make a bridge with PKCS#11 windows-only module to use it on linux.
 
+(Info) You can get small binaries compressed with UPX (prefixed by 's' in releases).
+
 ## Usage
 ### Generate certs
 ```bash
@@ -36,6 +38,62 @@ export PKCS11_PROXY_CERT=$(pwd)/client.crt
 # Example usage on client
 p11tool --provider=$(pwd)/pkcs11-proxy-module.so --generate-random=256
 p11tool --provider=$(pwd)/pkcs11-proxy-module.so --list-mechanisms
+```
+
+### Example usage
+```bash
+# Install softhsm2
+sudo apt-get update
+sudo apt-get install -y softhsm2 gnutls-bin curl
+# Initialize softhsm2 token
+mkdir -p $HOME/.local/softhsm2/tokens
+cat > $HOME/.softhsm2.conf <<EOF
+# SoftHSM v2 configuration file
+
+directories.tokendir = $HOME/.local/softhsm2/tokens/
+objectstore.backend = file
+
+# ERROR, WARNING, INFO, DEBUG
+log.level = ERROR
+
+# If CKF_REMOVABLE_DEVICE flag should be set
+slots.removable = false
+
+# Enable and disable PKCS#11 mechanisms using slots.mechanisms.
+slots.mechanisms = ALL
+
+# If the library should reset the state on fork
+library.reset_on_fork = false
+EOF
+softhsm2-util --init-token --slot 0 --label "My token 1" --pin 1234 --so-pin 1234
+export SOFTHSM2_CONF=$HOME/.softhsm2.conf
+# Install server
+curl -LO https://github.com/ryarnyah/pkcs11-go-proxy/releases/latest/download/spkcs11-proxy-server
+chmod +x pkcs11-proxy-server
+
+# Install client
+curl -LO https://github.com/ryarnyah/pkcs11-go-proxy/releases/latest/download/spkcs11-proxy-module.so
+
+# Generate tls keys
+curl -LO https://github.com/ryarnyah/pkcs11-go-proxy/raw/main/generate-keys.sh
+chmod +x generate-keys.sh
+./generate-keys.sh
+
+# Launch server
+export PKCS11_PROXY_ALLOWED_MODULES="/usr/lib/softhsm/libsofthsm2.so"
+export PKCS11_PROXY_URI="localhost:8080"
+export PKCS11_PROXY_CACERT=$(pwd)/ca.crt
+export PKCS11_PROXY_KEY=$(pwd)/server.key
+export PKCS11_PROXY_CERT=$(pwd)/server.crt
+./pkcs11-proxy-server &
+
+# Test client
+export PKCS11_PROXY_URI="localhost:8080"
+export PKCS11_PROXY_CACERT=$(pwd)/ca.crt
+export PKCS11_PROXY_KEY=$(pwd)/client.key
+export PKCS11_PROXY_CERT=$(pwd)/client.crt
+export PKCS11_MODULE="/usr/lib/softhsm/libsofthsm2.so"
+p11tool --provider=$(pwd)/spkcs11-proxy-module.so --list-mechanisms
 ```
 
 ## Build

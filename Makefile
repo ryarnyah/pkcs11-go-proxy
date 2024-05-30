@@ -2,7 +2,7 @@
 all: pkcs11-proxy-module.so pkcs11-proxy-module.dll pkcs11-proxy-server pkcs11-proxy-server.exe
 
 clean:
-	rm -f *.so *.dll pkcs11-proxy-module.*
+	rm -f *.so *.dll pkcs11-proxy-server* spkcs11-proxy-server*
 
 .PHONY: pkcs11-proxy-server
 pkcs11-proxy-server: protoc
