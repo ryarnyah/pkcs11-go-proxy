@@ -90,6 +90,8 @@ timeout 22 bash -c 'until printf "" 2>>/dev/null >>/dev/tcp/$0/$1; do sleep 1; d
 
 # Test client
 unset SOFTHSM2_CONF
+# For pkcs11mod log
+mkdir -p $HOME/.config
 export PKCS11_PROXY_URI="localhost:8080"
 export PKCS11_PROXY_CACERT=$(pwd)/ca.crt
 export PKCS11_PROXY_KEY=$(pwd)/client.key
