@@ -600,32 +600,25 @@ func (b *backend) GenerateRandom(handle pkcs11.SessionHandle, length int) ([]byt
 	return response.GetData(), err
 }
 func (b *backend) WaitForSlotEvent(flags uint) chan pkcs11.SlotEvent {
-	c := make(chan pkcs11.SlotEvent)
+	c := make(chan pkcs11.SlotEvent, 1)
 	stream, err := b.client.WaitForSlotEvent(context.Background(), &p11.WaitForSlotEventRequest{
 		Ctx:   b.ctx,
 		Flags: uint32(flags),
 	})
-	if err != nil {
-		close(c)
-	}
 	if err == nil {
-		go func() {
-			defer close(c)
-			for {
-				resp, err := stream.Recv()
-				if err == io.EOF {
-					return
-				}
-				if err != nil {
-					return
-				}
-				c <- pkcs11.SlotEvent{
-					SlotID: uint(resp.GetSlotID()),
-				}
+		var event p11.SlotEvent
+		err := stream.RecvMsg(&event)
+		if err != nil && err != io.EOF {
+			log.Printf("unable to recv slot event %s", err)
+		} else if err == nil {
+			c <- pkcs11.SlotEvent{
+				SlotID: uint(event.GetSlotID()),
 			}
-		}()
+		}
 	}
+	close(c)
 	return c
+
 }
 
 func init() {
