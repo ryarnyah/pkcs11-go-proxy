@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -14,6 +13,7 @@ import (
 	p11 "github.com/ryarnyah/pkcs11-go-proxy/pkcs11"
 	"github.com/ryarnyah/pkcs11-go-proxy/pkg"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
@@ -639,7 +639,7 @@ func init() {
 		var certPool *x509.CertPool
 		if os.Getenv("PKCS11_PROXY_CACERT") != "" {
 			// Load the CA certificate
-			trustedCert, err := ioutil.ReadFile(os.Getenv("PKCS11_PROXY_CACERT"))
+			trustedCert, err := os.ReadFile(os.Getenv("PKCS11_PROXY_CACERT"))
 			if err != nil {
 				log.Fatalf("Failed to load trusted certificate. %s.", err)
 			}
@@ -672,12 +672,16 @@ func init() {
 		if err != nil {
 			s := status.Convert(err)
 			if s != nil {
-				err = pkcs11.Error(s.Code())
+				code := s.Code()
+				if code == codes.Unknown {
+					code = codes.Code(pkcs11.CKR_FUNCTION_FAILED)
+				}
+				err = pkcs11.Error(code)
 			}
 		}
 		return err
 	}
-	conn, err := grpc.Dial(os.Getenv("PKCS11_PROXY_URI"), grpc.WithTransportCredentials(c), grpc.WithUnaryInterceptor(errHandler))
+	conn, err := grpc.NewClient(os.Getenv("PKCS11_PROXY_URI"), grpc.WithTransportCredentials(c), grpc.WithUnaryInterceptor(errHandler))
 	if err != nil {
 		log.Fatalf("unable to connect to pkcs11 proxy using env PKCS11_PROXY_URI %s: %s", os.Getenv("PKCS11_PROXY_URI"), err)
 	}

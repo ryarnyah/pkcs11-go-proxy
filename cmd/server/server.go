@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -1006,7 +1005,7 @@ func main() {
 		var certPool *x509.CertPool
 		if os.Getenv("PKCS11_PROXY_CACERT") != "" {
 			// Load the CA certificate
-			trustedCert, err := ioutil.ReadFile(os.Getenv("PKCS11_PROXY_CACERT"))
+			trustedCert, err := os.ReadFile(os.Getenv("PKCS11_PROXY_CACERT"))
 			if err != nil {
 				log.Fatalf("Failed to load trusted certificate. %s.", err)
 			}
@@ -1044,6 +1043,9 @@ func main() {
 				err = status.Error(codes.Code(pe), err.Error())
 			}
 			log.Printf("method %q failed: %s", info.FullMethod, err)
+		}
+		if os.Getenv("PKCS11_PROXY_ACCESS_LOGS") != "" {
+			log.Printf("LOG (%q) [%+v] -> [%+v] (%s)", info.FullMethod, req, resp, err)
 		}
 		return resp, err
 	}
