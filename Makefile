@@ -13,26 +13,19 @@ pkcs11-proxy-server.exe: protoc
 	CGO_ENABLED=1 CC=/usr/bin/x86_64-w64-mingw32-gcc GOOS=windows go build -ldflags="-s -w" -buildvcs=false -o pkcs11-proxy-server.exe ./cmd/server
 
 .PHONY: pkcs11-proxy-module.so
-pkcs11-proxy-module.so: protoc init
+pkcs11-proxy-module.so: protoc
 	go build -ldflags="-s -w" -o pkcs11-proxy-module.so -buildvcs=false -buildmode=c-shared ./cmd/module
 
 .PHONY: pkcs11-proxy-module.dll
-pkcs11-proxy-module.dll: protoc init
+pkcs11-proxy-module.dll: protoc
 	GOOS=windows CGO_ENABLED=1 CC=/usr/bin/x86_64-w64-mingw32-gcc go build -ldflags="-s -w" -o pkcs11-proxy-module.dll -buildvcs=false -buildmode=c-shared ./cmd/module
 
 .PHONY: protoc
 protoc: 
 	protoc -I proto/ \
-	--go-grpc_out=pkcs11 \
-	--go_out=pkcs11 \
+	--go-grpc_out=pkg/proto/pkcs11 \
+	--go_out=pkg/proto/pkcs11 \
 	proto/schema.proto
-
-.PHONY: init
-init:
-	cd pkcs11mod; go mod init github.com/namecoin/pkcs11mod || true
-	cd pkcs11mod; go mod tidy
-	cd pkcs11mod; go generate ./...
-	cd pkcs11mod; go mod tidy
 
 .PHONY: dev-dependencies
 dev-dependencies: ## Install all dev dependencies

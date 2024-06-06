@@ -190,7 +190,7 @@ type PKCS11Client interface {
 	GenerateRandom(ctx context.Context, in *GenerateRandomRequest, opts ...grpc.CallOption) (*GenerateRandomResponse, error)
 	// WaitForSlotEvent returns a channel which returns a slot event
 	// (token insertion, removal, etc.) when it occurs.
-	WaitForSlotEvent(ctx context.Context, in *WaitForSlotEventRequest, opts ...grpc.CallOption) (PKCS11_WaitForSlotEventClient, error)
+	WaitForSlotEvent(ctx context.Context, in *WaitForSlotEventRequest, opts ...grpc.CallOption) (*WaitForSlotEventResponse, error)
 }
 
 type pKCS11Client struct {
@@ -795,36 +795,13 @@ func (c *pKCS11Client) GenerateRandom(ctx context.Context, in *GenerateRandomReq
 	return out, nil
 }
 
-func (c *pKCS11Client) WaitForSlotEvent(ctx context.Context, in *WaitForSlotEventRequest, opts ...grpc.CallOption) (PKCS11_WaitForSlotEventClient, error) {
-	stream, err := c.cc.NewStream(ctx, &PKCS11_ServiceDesc.Streams[0], "/PKCS11/WaitForSlotEvent", opts...)
+func (c *pKCS11Client) WaitForSlotEvent(ctx context.Context, in *WaitForSlotEventRequest, opts ...grpc.CallOption) (*WaitForSlotEventResponse, error) {
+	out := new(WaitForSlotEventResponse)
+	err := c.cc.Invoke(ctx, "/PKCS11/WaitForSlotEvent", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &pKCS11WaitForSlotEventClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-type PKCS11_WaitForSlotEventClient interface {
-	Recv() (*SlotEvent, error)
-	grpc.ClientStream
-}
-
-type pKCS11WaitForSlotEventClient struct {
-	grpc.ClientStream
-}
-
-func (x *pKCS11WaitForSlotEventClient) Recv() (*SlotEvent, error) {
-	m := new(SlotEvent)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return out, nil
 }
 
 // PKCS11Server is the server API for PKCS11 service.
@@ -1003,7 +980,7 @@ type PKCS11Server interface {
 	GenerateRandom(context.Context, *GenerateRandomRequest) (*GenerateRandomResponse, error)
 	// WaitForSlotEvent returns a channel which returns a slot event
 	// (token insertion, removal, etc.) when it occurs.
-	WaitForSlotEvent(*WaitForSlotEventRequest, PKCS11_WaitForSlotEventServer) error
+	WaitForSlotEvent(context.Context, *WaitForSlotEventRequest) (*WaitForSlotEventResponse, error)
 	mustEmbedUnimplementedPKCS11Server()
 }
 
@@ -1209,8 +1186,8 @@ func (UnimplementedPKCS11Server) SeedRandom(context.Context, *SeedRandomRequest)
 func (UnimplementedPKCS11Server) GenerateRandom(context.Context, *GenerateRandomRequest) (*GenerateRandomResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GenerateRandom not implemented")
 }
-func (UnimplementedPKCS11Server) WaitForSlotEvent(*WaitForSlotEventRequest, PKCS11_WaitForSlotEventServer) error {
-	return status.Errorf(codes.Unimplemented, "method WaitForSlotEvent not implemented")
+func (UnimplementedPKCS11Server) WaitForSlotEvent(context.Context, *WaitForSlotEventRequest) (*WaitForSlotEventResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WaitForSlotEvent not implemented")
 }
 func (UnimplementedPKCS11Server) mustEmbedUnimplementedPKCS11Server() {}
 
@@ -2413,25 +2390,22 @@ func _PKCS11_GenerateRandom_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
-func _PKCS11_WaitForSlotEvent_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(WaitForSlotEventRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+func _PKCS11_WaitForSlotEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WaitForSlotEventRequest)
+	if err := dec(in); err != nil {
+		return nil, err
 	}
-	return srv.(PKCS11Server).WaitForSlotEvent(m, &pKCS11WaitForSlotEventServer{stream})
-}
-
-type PKCS11_WaitForSlotEventServer interface {
-	Send(*SlotEvent) error
-	grpc.ServerStream
-}
-
-type pKCS11WaitForSlotEventServer struct {
-	grpc.ServerStream
-}
-
-func (x *pKCS11WaitForSlotEventServer) Send(m *SlotEvent) error {
-	return x.ServerStream.SendMsg(m)
+	if interceptor == nil {
+		return srv.(PKCS11Server).WaitForSlotEvent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/PKCS11/WaitForSlotEvent",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PKCS11Server).WaitForSlotEvent(ctx, req.(*WaitForSlotEventRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 // PKCS11_ServiceDesc is the grpc.ServiceDesc for PKCS11 service.
@@ -2705,13 +2679,11 @@ var PKCS11_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GenerateRandom",
 			Handler:    _PKCS11_GenerateRandom_Handler,
 		},
-	},
-	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "WaitForSlotEvent",
-			Handler:       _PKCS11_WaitForSlotEvent_Handler,
-			ServerStreams: true,
+			MethodName: "WaitForSlotEvent",
+			Handler:    _PKCS11_WaitForSlotEvent_Handler,
 		},
 	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "schema.proto",
 }

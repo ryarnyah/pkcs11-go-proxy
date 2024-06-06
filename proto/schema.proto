@@ -191,394 +191,397 @@ service PKCS11 {
   rpc GenerateRandom(GenerateRandomRequest) returns (GenerateRandomResponse) {}
   // WaitForSlotEvent returns a channel which returns a slot event
   // (token insertion, removal, etc.) when it occurs.
-  rpc WaitForSlotEvent(WaitForSlotEventRequest) returns (stream SlotEvent) {}
+  rpc WaitForSlotEvent(WaitForSlotEventRequest) returns (WaitForSlotEventResponse) {}
 }
 
+message WaitForSlotEventResponse {
+  uint64 slotID = 1;
+}
 message WaitForSlotEventRequest {
   string ctx = 1;
-  uint32 flags = 2;
+  uint64 flags = 2;
 }
 message GenerateRandomResponse { bytes data = 1; }
 message GenerateRandomRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
-  uint32 length = 3;
+  uint64 session_handle = 2;
+  uint64 length = 3;
 }
 message SeedRandomResponse {}
 message SeedRandomRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes seed = 3;
 }
-message DeriveKeyResponse { uint32 handle_id = 1; }
+message DeriveKeyResponse { uint64 handle_id = 1; }
 message DeriveKeyRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
-  uint32 handle_id = 4;
+  uint64 handle_id = 4;
   repeated Attribute attributes = 5;
 }
-message UnwrapKeyResponse { uint32 handle_id = 1; }
+message UnwrapKeyResponse { uint64 handle_id = 1; }
 message UnwrapKeyRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
-  uint32 wrapping_handle_id = 4;
+  uint64 wrapping_handle_id = 4;
   bytes wrapped_key = 5;
   repeated Attribute attributes = 6;
 }
 message WrapKeyResponse { bytes wrapped_key = 1; }
 message WrapKeyRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
-  uint32 wrapping_handle_id = 4;
-  uint32 handle_id = 5;
+  uint64 wrapping_handle_id = 4;
+  uint64 handle_id = 5;
 }
 message GenerateKeyPairResponse {
-  uint32 public_key_handle_id = 1;
-  uint32 private_key_handle_id = 3;
+  uint64 public_key_handle_id = 1;
+  uint64 private_key_handle_id = 3;
 }
 message GenerateKeyPairRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
   repeated Attribute public_attributes = 4;
   repeated Attribute private_attributes = 5;
 }
-message GenerateKeyResponse { uint32 handle_id = 1; }
+message GenerateKeyResponse { uint64 handle_id = 1; }
 message GenerateKeyRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
   repeated Attribute attributes = 4;
 }
 message DecryptVerifyUpdateResponse { bytes plain = 1; }
 message DecryptVerifyUpdateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes encrypted = 3;
 }
 message SignEncryptUpdateResponse { bytes signature = 1; }
 message SignEncryptUpdateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message DecryptDigestUpdateResponse { bytes encrypted = 1; }
 message DecryptDigestUpdateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message DigestEncryptUpdateResponse { bytes hashed = 1; }
 message DigestEncryptUpdateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message VerifyRecoverResponse { bytes data = 1; }
 message VerifyRecoverRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes signature = 3;
 }
 message VerifyRecoverInitResponse {}
 message VerifyRecoverInitRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
-  uint32 handle_id = 4;
+  uint64 handle_id = 4;
 }
 message VerifyFinalResponse {}
 message VerifyFinalRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes signature = 3;
 }
 message VerifyUpdateResponse {}
 message VerifyUpdateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message VerifyResponse {}
 message VerifyRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
   bytes signature = 4;
 }
 message VerifyInitResponse {}
 message VerifyInitRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
-  uint32 handle_id = 4;
+  uint64 handle_id = 4;
 }
 message SignRecoverResponse { bytes signature = 1; }
 message SignRecoverRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message SignRecoverInitResponse {}
 message SignRecoverInitRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
-  uint32 handle_id = 4;
+  uint64 handle_id = 4;
 }
 message SignFinalResponse { bytes signature = 1; }
 message SignFinalRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
 }
 message SignUpdateResponse {}
 message SignUpdateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message SignResponse { bytes signature = 1; }
 message SignRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message SignInitResponse {}
 message SignInitRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
-  uint32 handle_id = 4;
+  uint64 handle_id = 4;
 }
 message DigestFinalResponse { bytes hashed = 1; }
 message DigestFinalRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
 }
 message DigestKeyResponse {}
 message DigestKeyRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
-  uint32 handle_id = 3;
+  uint64 session_handle = 2;
+  uint64 handle_id = 3;
 }
 message DigestUpdateResponse { bytes hashed = 1; }
 message DigestUpdateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message DigestResponse { bytes hashed = 1; }
 message DigestRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message DigestInitResponse {}
 message DigestInitRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
 }
 message DecryptFinalResponse { bytes plain = 1; }
 message DecryptFinalRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
 }
 message DecryptUpdateResponse { bytes plain = 1; }
 message DecryptUpdateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes encrypted = 3;
 }
 message DecryptResponse { bytes plain = 1; }
 message DecryptRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes encrypted = 3;
 }
 message DecryptInitResponse {}
 message DecryptInitRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
-  uint32 handle_id = 4;
+  uint64 handle_id = 4;
 }
 message EncryptFinalResponse { bytes encrypted = 1; }
 message EncryptFinalRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
 }
 message EncryptUpdateResponse { bytes encrypted = 1; }
 message EncryptUpdateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes message = 3;
 }
 message EncryptResponse { bytes encrypted = 1; }
 message EncryptRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes plain = 3;
 }
 message EncryptInitResponse {}
 message EncryptInitRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Mechanism mechanisms = 3;
-  uint32 handle_id = 4;
+  uint64 handle_id = 4;
 }
 message FindObjectsFinalResponse {}
 message FindObjectsFinalRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
 }
 message FindObjectsResponse {
-  repeated uint32 handle_ids = 1;
+  repeated uint64 handle_ids = 1;
   bool has_more = 2;
 }
 message FindObjectsRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
-  uint32 max = 3;
+  uint64 session_handle = 2;
+  uint64 max = 3;
 }
 message FindObjectsInitResponse {}
 message FindObjectsInitRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Attribute attributes = 3;
 }
 message SetAttributeValueResponse {}
 message SetAttributeValueRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
-  uint32 handle_id = 3;
+  uint64 session_handle = 2;
+  uint64 handle_id = 3;
   repeated Attribute attributes = 4;
 }
 message GetAttributeValueResponse { repeated Attribute attributes = 1; }
 message GetAttributeValueRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
-  uint32 handle_id = 3;
+  uint64 session_handle = 2;
+  uint64 handle_id = 3;
   repeated Attribute attributes = 4;
 }
-message GetObjectSizeResponse { uint32 size = 1; }
+message GetObjectSizeResponse { uint64 size = 1; }
 message GetObjectSizeRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
-  uint32 handle_id = 3;
+  uint64 session_handle = 2;
+  uint64 handle_id = 3;
   repeated Attribute attributes = 4;
 }
 message DestroyObjectResponse {}
 message DestroyObjectRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
-  uint32 handle_id = 3;
+  uint64 session_handle = 2;
+  uint64 handle_id = 3;
 }
-message CopyObjectResponse { uint32 handle_id = 1; }
+message CopyObjectResponse { uint64 handle_id = 1; }
 message CopyObjectRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
-  uint32 handle_id = 3;
+  uint64 session_handle = 2;
+  uint64 handle_id = 3;
   repeated Attribute attributes = 4;
 }
-message CreateObjectResponse { uint32 handle_id = 1; }
+message CreateObjectResponse { uint64 handle_id = 1; }
 message CreateObjectRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   repeated Attribute attributes = 3;
 }
 message LogoutResponse {}
 message LogoutRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
 }
 message LoginResponse {}
 message LoginRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
-  uint32 user_type = 3;
+  uint64 session_handle = 2;
+  uint64 user_type = 3;
   string pin = 4;
 }
 message SetOperationStateResponse {}
 message SetOperationStateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   bytes state = 3;
-  uint32 encrypt_key = 4;
-  uint32 auth_key = 5;
+  uint64 encrypt_key = 4;
+  uint64 auth_key = 5;
 }
 message GetOperationStateResponse { bytes state = 1; }
 message GetOperationStateRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
 }
 message GetSessionInfoResponse { SessionInfo info = 1; }
 message GetSessionInfoRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
 }
 message CloseAllSessionsResponse {}
 message CloseAllSessionsRequest {
   string ctx = 1;
-  uint32 slot_id = 2;
+  uint64 slot_id = 2;
 }
 message CloseSessionResponse {}
 message CloseSessionRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
 }
-message OpenSessionResponse { uint32 session_handle = 1; }
+message OpenSessionResponse { uint64 session_handle = 1; }
 message OpenSessionRequest {
   string ctx = 1;
-  uint32 slot_id = 2;
-  uint32 flags = 3;
+  uint64 slot_id = 2;
+  uint64 flags = 3;
 }
 message SetPINResponse {}
 message SetPINRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   string old_pin = 3;
   string new_pin = 4;
 }
 message InitPINResponse {}
 message InitPINRequest {
   string ctx = 1;
-  uint32 session_handle = 2;
+  uint64 session_handle = 2;
   string pin = 3;
 }
 message InitTokenResponse {}
 message InitTokenRequest {
   string ctx = 1;
-  uint32 slot_id = 2;
+  uint64 slot_id = 2;
   string pin = 3;
   string label = 4;
 }
 message GetMechanismInfoResponse { MechanismInfo info = 1; }
 message GetMechanismInfoRequest {
   string ctx = 1;
-  uint32 slot_id = 2;
+  uint64 slot_id = 2;
   repeated Mechanism mechanisms = 3;
 }
 message GetMechanismListResponse { repeated Mechanism mechanisms = 1; }
 message GetMechanismListRequest {
   string ctx = 1;
-  uint32 slot_id = 2;
+  uint64 slot_id = 2;
 }
 message GetTokenInfoResponse { TokenInfo info = 1; }
 message GetTokenInfoRequest {
   string ctx = 1;
-  uint32 slot_id = 2;
+  uint64 slot_id = 2;
 }
 
 message GetSlotInfoResponse { SlotInfo info = 1; }
 message GetSlotInfoRequest {
   string ctx = 1;
-  uint32 slot_id = 2;
+  uint64 slot_id = 2;
 }
-message GetSlotListResponse { repeated uint32 slot_ids = 1; }
+message GetSlotListResponse { repeated uint64 slot_ids = 1; }
 message GetSlotListRequest {
   string ctx = 1;
   bool token_present = 2;
@@ -597,7 +600,10 @@ message NewResponse { string ctx = 1; }
 message EmptyRequest {}
 message EmptyResponse {}
 
-message Version { bytes MajorMinor = 1; }
+message Version {
+  uint32 Major = 1;
+  uint32 Minor = 2;
+}
 
 message Info {
   Version CryptokiVersion = 1;
@@ -610,7 +616,7 @@ message Info {
 message SlotInfo {
   string SlotDescription = 1;
   string ManufacturerID = 2;
-  uint32 Flags = 3;
+  uint64 Flags = 3;
   Version HardwareVersion = 4;
   Version FirmwareVersion = 5;
 }
@@ -620,44 +626,44 @@ message TokenInfo {
   string ManufacturerID = 2;
   string Model = 3;
   string SerialNumber = 4;
-  uint32 Flags = 5;
-  uint32 MaxSessionCount = 6;
-  uint32 SessionCount = 7;
-  uint32 MaxRwSessionCount = 8;
-  uint32 RwSessionCount = 9;
-  uint32 MaxPinLen = 10;
-  uint32 MinPinLen = 11;
-  uint32 TotalPublicMemory = 12;
-  uint32 FreePublicMemory = 13;
-  uint32 TotalPrivateMemory = 14;
-  uint32 FreePrivateMemory = 15;
+  uint64 Flags = 5;
+  uint64 MaxSessionCount = 6;
+  uint64 SessionCount = 7;
+  uint64 MaxRwSessionCount = 8;
+  uint64 RwSessionCount = 9;
+  uint64 MaxPinLen = 10;
+  uint64 MinPinLen = 11;
+  uint64 TotalPublicMemory = 12;
+  uint64 FreePublicMemory = 13;
+  uint64 TotalPrivateMemory = 14;
+  uint64 FreePrivateMemory = 15;
   Version HardwareVersion = 16;
   Version FirmwareVersion = 17;
   string UTCTime = 18;
 }
 
 message Mechanism {
-  uint32 Mechanism = 1;
-  bytes Parameter = 2;
+  uint64 Mechanism = 1;
+  optional bytes Parameter = 2;
   google.protobuf.Any generator = 3;
 }
 
 message MechanismInfo {
-  uint32 MinKeySize = 1;
-  uint32 MaxKeySize = 2;
-  uint32 Flags = 3;
+  uint64 MinKeySize = 1;
+  uint64 MaxKeySize = 2;
+  uint64 Flags = 3;
 }
 
 message SessionInfo {
-  uint32 SlotID = 1;
-  uint32 State = 2;
-  uint32 Flags = 3;
-  uint32 DeviceError = 4;
+  uint64 SlotID = 1;
+  uint64 State = 2;
+  uint64 Flags = 3;
+  uint64 DeviceError = 4;
 }
 
 message Attribute {
-  uint32 Type = 1;
+  uint64 Type = 1;
   bytes Value = 2;
 }
 
-message SlotEvent { uint32 SlotID = 1; }
+message SlotEvent { uint64 SlotID = 1; }

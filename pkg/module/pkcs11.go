@@ -1,0 +1,1484 @@
+package module
+
+/*
+#cgo windows CFLAGS: -DPACKED_STRUCTURES
+
+#include "../pkcs11/pkcs11go.h"
+*/
+import "C"
+
+import (
+	"fmt"
+	"log"
+	"strings"
+	"sync"
+	"unsafe"
+
+	pkcs11 "github.com/ryarnyah/pkcs11-go-proxy/pkg/proto/pkcs11"
+)
+
+var (
+	backend Backend
+)
+
+func init() {
+	preventUnload()
+}
+
+func SetBackend(b Backend) {
+	backend = b
+}
+
+//export goLog
+func goLog(s unsafe.Pointer) {
+	log.Println(C.GoString((*C.char)(s)))
+}
+
+//export goInitialize
+func goInitialize() C.CK_RV {
+	if backend == nil {
+		log.Println("pkcs11mod: Can't initialize nil backend")
+
+		return C.CKR_GENERAL_ERROR
+	}
+
+	err := backend.Initialize()
+
+	return fromError(err)
+}
+
+//export goFinalize
+func goFinalize() C.CK_RV {
+	err := backend.Finalize()
+
+	exitSoon()
+
+	return fromError(err)
+}
+
+//export goGetInfo
+func goGetInfo(p C.ckInfoPtr) C.CK_RV {
+	if p == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	info, err := backend.GetInfo()
+	if err != nil {
+		return fromError(err)
+	}
+
+	p.cryptokiVersion.major = C.CK_BYTE(info.CryptokiVersion.Major)
+	p.cryptokiVersion.minor = C.CK_BYTE(info.CryptokiVersion.Minor)
+	p.flags = C.CK_FLAGS(info.Flags)
+	p.libraryVersion.major = C.CK_BYTE(info.LibraryVersion.Major)
+	p.libraryVersion.minor = C.CK_BYTE(info.LibraryVersion.Minor)
+
+	// CK_INFO strings have a max length of 32, must be padded with the space
+	// character, and must not be null-terminated, as per Sec. 3.1 of the
+	// PKCS#11 spec.
+	info.ManufacturerID = fmt.Sprintf("%-32.32s", info.ManufacturerID)
+	info.LibraryDescription = fmt.Sprintf("%-32.32s", info.LibraryDescription)
+
+	// Copy the ManufacturerID
+	for i, ch := range info.ManufacturerID {
+		p.manufacturerID[i] = C.CK_UTF8CHAR(ch)
+	}
+	// Copy the LibraryDescription
+	for i, ch := range info.LibraryDescription {
+		p.libraryDescription[i] = C.CK_UTF8CHAR(ch)
+	}
+
+	return fromError(nil)
+}
+
+//export goGetSlotList
+func goGetSlotList(tokenPresent C.CK_BBOOL, pSlotList C.CK_SLOT_ID_PTR, pulCount C.CK_ULONG_PTR) C.CK_RV {
+	if pulCount == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goTokenPresent := fromCBBool(tokenPresent)
+
+	slotList, err := backend.GetSlotList(goTokenPresent)
+	if err != nil {
+		return fromError(err)
+	}
+
+	goCount := uint64(len(slotList))
+
+	if pSlotList == nil {
+		// Only return the number of slots
+		*pulCount = C.CK_ULONG(goCount)
+	} else {
+		// Return number of slots and list of slots
+
+		// Check to make sure that the buffer is big enough
+		goRequestedCount := uint64(*pulCount)
+		*pulCount = C.CK_ULONG(goCount)
+		if goRequestedCount < goCount {
+			return C.CKR_BUFFER_TOO_SMALL
+		}
+
+		fromList(slotList, C.CK_ULONG_PTR(pSlotList), goCount)
+	}
+
+	return fromError(nil)
+}
+
+//export goGetSlotInfo
+func goGetSlotInfo(slotID C.CK_SLOT_ID, pInfo C.CK_SLOT_INFO_PTR) C.CK_RV {
+	if pInfo == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSlotID := uint64(slotID)
+
+	slotInfo, err := backend.GetSlotInfo(goSlotID)
+	if err != nil {
+		return fromError(err)
+	}
+
+	pInfo.flags = C.CK_FLAGS(slotInfo.Flags)
+	pInfo.hardwareVersion.major = C.CK_BYTE(slotInfo.HardwareVersion.Major)
+	pInfo.hardwareVersion.minor = C.CK_BYTE(slotInfo.HardwareVersion.Minor)
+	pInfo.firmwareVersion.major = C.CK_BYTE(slotInfo.FirmwareVersion.Major)
+	pInfo.firmwareVersion.minor = C.CK_BYTE(slotInfo.FirmwareVersion.Minor)
+
+	// CK_SLOT_INFO strings have a max length, must be padded with the space
+	// character, and must not be null-terminated, as per Sec. 3.2 of the
+	// PKCS#11 spec.
+	slotInfo.SlotDescription = fmt.Sprintf("%-64.64s", slotInfo.SlotDescription)
+	slotInfo.ManufacturerID = fmt.Sprintf("%-32.32s", slotInfo.ManufacturerID)
+
+	// Copy the SlotDescription
+	for i, ch := range slotInfo.SlotDescription {
+		pInfo.slotDescription[i] = C.CK_UTF8CHAR(ch)
+	}
+	// Copy the ManufacturerID
+	for i, ch := range slotInfo.ManufacturerID {
+		pInfo.manufacturerID[i] = C.CK_UTF8CHAR(ch)
+	}
+
+	return fromError(nil)
+}
+
+//export goGetTokenInfo
+func goGetTokenInfo(slotID C.CK_SLOT_ID, pInfo C.CK_TOKEN_INFO_PTR) C.CK_RV {
+	if pInfo == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSlotID := uint64(slotID)
+
+	tokenInfo, err := backend.GetTokenInfo(goSlotID)
+	if err != nil {
+		return fromError(err)
+	}
+
+	pInfo.flags = C.CK_FLAGS(tokenInfo.Flags)
+	pInfo.ulMaxSessionCount = C.CK_ULONG(tokenInfo.MaxSessionCount)
+	pInfo.ulSessionCount = C.CK_ULONG(tokenInfo.SessionCount)
+	pInfo.ulMaxRwSessionCount = C.CK_ULONG(tokenInfo.MaxRwSessionCount)
+	pInfo.ulRwSessionCount = C.CK_ULONG(tokenInfo.RwSessionCount)
+	pInfo.ulMaxPinLen = C.CK_ULONG(tokenInfo.MaxPinLen)
+	pInfo.ulMinPinLen = C.CK_ULONG(tokenInfo.MinPinLen)
+	pInfo.ulTotalPublicMemory = C.CK_ULONG(tokenInfo.TotalPublicMemory)
+	pInfo.ulFreePublicMemory = C.CK_ULONG(tokenInfo.FreePublicMemory)
+	pInfo.ulTotalPrivateMemory = C.CK_ULONG(tokenInfo.TotalPrivateMemory)
+	pInfo.ulFreePrivateMemory = C.CK_ULONG(tokenInfo.FreePrivateMemory)
+	pInfo.hardwareVersion.major = C.CK_BYTE(tokenInfo.HardwareVersion.Major)
+	pInfo.hardwareVersion.minor = C.CK_BYTE(tokenInfo.HardwareVersion.Minor)
+	pInfo.firmwareVersion.major = C.CK_BYTE(tokenInfo.FirmwareVersion.Major)
+	pInfo.firmwareVersion.minor = C.CK_BYTE(tokenInfo.FirmwareVersion.Minor)
+
+	// CK_TOKEN_INFO strings have a max length, must be padded with the space
+	// character (except for utcTime which is padded with '0'), and must not be
+	// null-terminated, as per Sec. 3.2 of the PKCS#11 spec.
+	tokenInfo.Label = fmt.Sprintf("%-32.32s", tokenInfo.Label)
+	tokenInfo.ManufacturerID = fmt.Sprintf("%-32.32s", tokenInfo.ManufacturerID)
+	tokenInfo.Model = fmt.Sprintf("%-16.16s", tokenInfo.Model)
+	tokenInfo.SerialNumber = fmt.Sprintf("%-16.16s", tokenInfo.SerialNumber)
+	tokenInfo.UTCTime = strings.ReplaceAll(fmt.Sprintf("%-16.16s", tokenInfo.UTCTime), " ", "0")
+
+	// Copy the Label
+	for i, ch := range tokenInfo.Label {
+		pInfo.label[i] = C.CK_UTF8CHAR(ch)
+	}
+	// Copy the ManufacturerID
+	for i, ch := range tokenInfo.ManufacturerID {
+		pInfo.manufacturerID[i] = C.CK_UTF8CHAR(ch)
+	}
+	// Copy the Model
+	for i, ch := range tokenInfo.Model {
+		pInfo.model[i] = C.CK_UTF8CHAR(ch)
+	}
+	// Copy the SerialNumber
+	for i, ch := range tokenInfo.SerialNumber {
+		pInfo.serialNumber[i] = C.CK_CHAR(ch)
+	}
+	// Copy the UTCTime
+	for i, ch := range tokenInfo.UTCTime {
+		pInfo.utcTime[i] = C.CK_CHAR(ch)
+	}
+
+	return fromError(err)
+}
+
+//export goGetMechanismList
+func goGetMechanismList(slotID C.CK_SLOT_ID, pMechanismList C.CK_MECHANISM_TYPE_PTR, pulCount C.CK_ULONG_PTR) C.CK_RV {
+	if pulCount == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSlotID := uint64(slotID)
+
+	mechanismList, err := backend.GetMechanismList(goSlotID)
+	if err != nil {
+		return fromError(err)
+	}
+
+	goCount := uint64(len(mechanismList))
+
+	if pMechanismList == nil {
+		// Only return the number of mechanisms
+		*pulCount = C.CK_ULONG(goCount)
+	} else {
+		// Return number of mechanisms and list of mechanisms
+
+		// Check to make sure that the buffer is big enough
+		goRequestedCount := uint64(*pulCount)
+		*pulCount = C.CK_ULONG(goCount)
+		if goRequestedCount < goCount {
+			return C.CKR_BUFFER_TOO_SMALL
+		}
+
+		fromMechanismList(mechanismList, C.CK_ULONG_PTR(pMechanismList), goCount)
+	}
+
+	return fromError(nil)
+}
+
+//export goGetMechanismInfo
+func goGetMechanismInfo(slotID C.CK_SLOT_ID, mechType C.CK_MECHANISM_TYPE, pInfo C.CK_MECHANISM_INFO_PTR) C.CK_RV {
+	if pInfo == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSlotID := uint64(slotID)
+	goMechType := uint64(mechType)
+
+	m := []*pkcs11.Mechanism{
+		{
+			Mechanism: goMechType,
+		},
+	}
+
+	mi, err := backend.GetMechanismInfo(goSlotID, m)
+	if err != nil {
+		return fromError(err)
+	}
+
+	pInfo.ulMinKeySize = C.CK_ULONG(mi.MinKeySize)
+	pInfo.ulMaxKeySize = C.CK_ULONG(mi.MaxKeySize)
+	pInfo.flags = C.CK_FLAGS(mi.Flags)
+
+	return fromError(nil)
+}
+
+//export goInitPIN
+func goInitPIN(sessionHandle C.CK_SESSION_HANDLE, pPin C.CK_UTF8CHAR_PTR, ulPinLen C.CK_ULONG) C.CK_RV {
+	if pPin == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goPin := string((*[1 << 30]byte)(unsafe.Pointer(pPin))[:ulPinLen:ulPinLen])
+
+	err := backend.InitPIN(goSessionHandle, goPin)
+
+	return fromError(err)
+}
+
+//export goSetPIN
+func goSetPIN(sessionHandle C.CK_SESSION_HANDLE, pOldPin C.CK_UTF8CHAR_PTR, ulOldLen C.CK_ULONG, pNewPin C.CK_UTF8CHAR_PTR, ulNewLen C.CK_ULONG) C.CK_RV {
+	if pOldPin == nil || pNewPin == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goOldPin := string(C.GoBytes(unsafe.Pointer(pOldPin), C.int(ulOldLen)))
+	goNewPin := string(C.GoBytes(unsafe.Pointer(pNewPin), C.int(ulNewLen)))
+
+	err := backend.SetPIN(goSessionHandle, goOldPin, goNewPin)
+
+	return fromError(err)
+}
+
+type sessionInfo struct {
+	encryptData []byte
+	decryptData []byte
+	digestData  []byte
+	signData    []byte
+}
+
+var (
+	sessions      = map[pkcs11.SessionHandle]*sessionInfo{}
+	sessionsMutex sync.RWMutex
+)
+
+func getSession(sessionHandle pkcs11.SessionHandle) (*sessionInfo, error) {
+	sessionsMutex.RLock()
+	session, ok := sessions[sessionHandle]
+	sessionsMutex.RUnlock()
+
+	if !ok {
+		return nil, pkcs11.Error(pkcs11.CKR_SESSION_HANDLE_INVALID)
+	}
+
+	return session, nil
+}
+
+//export goOpenSession
+func goOpenSession(slotID C.CK_SLOT_ID, flags C.CK_FLAGS, phSession C.CK_SESSION_HANDLE_PTR) C.CK_RV {
+	if phSession == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSlotID := uint64(slotID)
+	goFlags := uint64(flags)
+
+	sessionHandle, err := backend.OpenSession(goSlotID, goFlags)
+	if err != nil {
+		return fromError(err)
+	}
+
+	sessionsMutex.Lock()
+	sessions[sessionHandle] = &sessionInfo{}
+	sessionsMutex.Unlock()
+
+	*phSession = C.CK_SESSION_HANDLE(sessionHandle)
+
+	return fromError(nil)
+}
+
+//export goCloseSession
+func goCloseSession(sessionHandle C.CK_SESSION_HANDLE) C.CK_RV {
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+
+	err := backend.CloseSession(goSessionHandle)
+
+	return fromError(err)
+}
+
+//export goCloseAllSessions
+func goCloseAllSessions(slotID C.CK_SLOT_ID) C.CK_RV {
+	goSlotID := uint64(slotID)
+
+	err := backend.CloseAllSessions(goSlotID)
+
+	return fromError(err)
+}
+
+//export goGetOperationState
+func goGetOperationState(sessionHandle C.CK_SESSION_HANDLE, pOperationState C.CK_BYTE_PTR, pulOperationStateLen C.CK_ULONG_PTR) C.CK_RV {
+	if pOperationState == nil || pulOperationStateLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goOperationState := (*[1 << 30]byte)(unsafe.Pointer(pOperationState))[:*pulOperationStateLen:*pulOperationStateLen]
+
+	result, err := backend.GetOperationState(goSessionHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulOperationStateLen) < len(result) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goOperationState, result)
+	*pulOperationStateLen = C.CK_ULONG(len(result))
+
+	return fromError(nil)
+}
+
+//export goSetOperationState
+func goSetOperationState(sessionHandle C.CK_SESSION_HANDLE, pOperationState C.CK_BYTE_PTR, ulOperationStateLen C.CK_LONG, hEncryptionKey, hAuthenticationKey C.CK_OBJECT_HANDLE) C.CK_RV {
+	if pOperationState == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goEncryptionKey := pkcs11.ObjectHandle(hEncryptionKey)
+	goAuthenticationKey := pkcs11.ObjectHandle(hAuthenticationKey)
+	goOperationState := C.GoBytes(unsafe.Pointer(pOperationState), C.int(ulOperationStateLen))
+
+	err := backend.SetOperationState(goSessionHandle, goOperationState, goEncryptionKey, goAuthenticationKey)
+
+	return fromError(err)
+}
+
+//export goGetSessionInfo
+func goGetSessionInfo(sessionHandle C.CK_SESSION_HANDLE, pInfo C.CK_SESSION_INFO_PTR) C.CK_RV {
+	if pInfo == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+
+	info, err := backend.GetSessionInfo(goSessionHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	pInfo.slotID = C.CK_SLOT_ID(info.SlotID)
+	pInfo.state = C.CK_STATE(info.State)
+	pInfo.flags = C.CK_FLAGS(info.Flags)
+	pInfo.ulDeviceError = C.CK_ULONG(info.DeviceError)
+
+	return fromError(nil)
+}
+
+//export goLogin
+func goLogin(sessionHandle C.CK_SESSION_HANDLE, userType C.CK_USER_TYPE, pPin C.CK_UTF8CHAR_PTR, ulPinLen C.CK_ULONG) C.CK_RV {
+	if pPin == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goUserType := uint64(userType)
+	goPin := string(C.GoBytes(unsafe.Pointer(pPin), C.int(ulPinLen)))
+
+	err := backend.Login(goSessionHandle, goUserType, goPin)
+
+	return fromError(err)
+}
+
+//export goLogout
+func goLogout(sessionHandle C.CK_SESSION_HANDLE) C.CK_RV {
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+
+	err := backend.Logout(goSessionHandle)
+
+	return fromError(err)
+}
+
+//export goCreateObject
+func goCreateObject(sessionHandle C.CK_SESSION_HANDLE, pTemplate C.CK_ATTRIBUTE_PTR, ulCount C.CK_ULONG, phObject C.CK_OBJECT_HANDLE_PTR) C.CK_RV {
+	if pTemplate == nil && ulCount > 0 || phObject == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goTemplate := toTemplate(pTemplate, ulCount)
+
+	goHandle, err := backend.CreateObject(goSessionHandle, goTemplate)
+	if err != nil {
+		return fromError(err)
+	}
+
+	*phObject = C.CK_OBJECT_HANDLE(goHandle)
+
+	return fromError(nil)
+}
+
+//export goCopyObject
+func goCopyObject(sessionHandle C.CK_SESSION_HANDLE, hObject C.CK_OBJECT_HANDLE, pTemplate C.CK_ATTRIBUTE_PTR, ulCount C.CK_ULONG, phNewObject C.CK_OBJECT_HANDLE_PTR) C.CK_RV {
+	if pTemplate == nil && ulCount > 0 || phNewObject == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goTemplate := toTemplate(pTemplate, ulCount)
+	goObjectHandle := pkcs11.ObjectHandle(hObject)
+
+	goHandle, err := backend.CopyObject(goSessionHandle, goObjectHandle, goTemplate)
+	if err != nil {
+		return fromError(err)
+	}
+
+	*phNewObject = C.CK_OBJECT_HANDLE(goHandle)
+
+	return fromError(nil)
+}
+
+//export goDestroyObject
+func goDestroyObject(sessionHandle C.CK_SESSION_HANDLE, hObject C.CK_OBJECT_HANDLE) C.CK_RV {
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(hObject)
+
+	err := backend.DestroyObject(goSessionHandle, goObjectHandle)
+
+	return fromError(err)
+}
+
+//export goGetObjectSize
+func goGetObjectSize(sessionHandle C.CK_SESSION_HANDLE, objectHandle C.CK_OBJECT_HANDLE, pulSize C.CK_ULONG_PTR) C.CK_RV {
+	if pulSize == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(objectHandle)
+
+	goSize, err := backend.GetObjectSize(goSessionHandle, goObjectHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	*pulSize = C.CK_ULONG(goSize)
+
+	return fromError(nil)
+}
+
+//export goGetAttributeValue
+func goGetAttributeValue(sessionHandle C.CK_SESSION_HANDLE, objectHandle C.CK_OBJECT_HANDLE, pTemplate C.CK_ATTRIBUTE_PTR, ulCount C.CK_ULONG) C.CK_RV {
+	if pTemplate == nil && ulCount > 0 {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(objectHandle)
+	goTemplate := toTemplate(pTemplate, ulCount)
+
+	goResults, errFinal := backend.GetAttributeValue(goSessionHandle, goObjectHandle, goTemplate)
+	if fromError(errFinal) == pkcs11.CKR_ATTRIBUTE_SENSITIVE || fromError(errFinal) == pkcs11.CKR_ATTRIBUTE_TYPE_INVALID {
+		// If we get these error codes in a one-shot, we need to try the
+		// attributes one-by-one to retrieve partial results.
+		goResults = make([]*pkcs11.Attribute, len(goTemplate))
+
+		for i, t := range goTemplate {
+			goTemplateSingle := []*pkcs11.Attribute{t}
+
+			goResultsSingle, err := backend.GetAttributeValue(goSessionHandle, goObjectHandle, goTemplateSingle)
+
+			switch {
+			case fromError(err) == pkcs11.CKR_ATTRIBUTE_SENSITIVE || fromError(err) == pkcs11.CKR_ATTRIBUTE_TYPE_INVALID:
+				goResults[i] = &pkcs11.Attribute{
+					Type:  t.Type,
+					Value: nil,
+				}
+			case err != nil:
+				return fromError(err)
+			default:
+				goResults[i] = goResultsSingle[0]
+			}
+		}
+	} else if errFinal != nil {
+		return fromError(errFinal)
+	}
+
+	errFromTemplate := fromTemplate(goResults, pTemplate)
+	if errFromTemplate != nil {
+		errFinal = errFromTemplate
+	}
+
+	return fromError(errFinal)
+}
+
+//export goSetAttributeValue
+func goSetAttributeValue(sessionHandle C.CK_SESSION_HANDLE, hObject C.CK_OBJECT_HANDLE, pTemplate C.CK_ATTRIBUTE_PTR, ulCount C.CK_ULONG) C.CK_RV {
+	if pTemplate == nil && ulCount > 0 {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(hObject)
+	goTemplate := toTemplate(pTemplate, ulCount)
+
+	err := backend.SetAttributeValue(goSessionHandle, goObjectHandle, goTemplate)
+
+	return fromError(err)
+}
+
+//export goFindObjectsInit
+func goFindObjectsInit(sessionHandle C.CK_SESSION_HANDLE, pTemplate C.CK_ATTRIBUTE_PTR, ulCount C.CK_ULONG) C.CK_RV {
+	if pTemplate == nil && ulCount > 0 {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goTemplate := toTemplate(pTemplate, ulCount)
+
+	err := backend.FindObjectsInit(goSessionHandle, goTemplate)
+
+	return fromError(err)
+}
+
+//export goFindObjects
+func goFindObjects(sessionHandle C.CK_SESSION_HANDLE, phObject C.CK_OBJECT_HANDLE_PTR, ulMaxObjectCount C.CK_ULONG, pulObjectCount C.CK_ULONG_PTR) C.CK_RV {
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goMax := int(ulMaxObjectCount)
+
+	if (phObject == nil && goMax > 0) || pulObjectCount == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	objectHandles, _, err := backend.FindObjects(goSessionHandle, goMax)
+	if err != nil {
+		return fromError(err)
+	}
+
+	goCount := uint64(len(objectHandles))
+	*pulObjectCount = C.CK_ULONG(goCount)
+	fromObjectHandleList(objectHandles, C.CK_ULONG_PTR(phObject), goCount)
+
+	return fromError(nil)
+}
+
+//export goFindObjectsFinal
+func goFindObjectsFinal(sessionHandle C.CK_SESSION_HANDLE) C.CK_RV {
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+
+	err := backend.FindObjectsFinal(goSessionHandle)
+
+	return fromError(err)
+}
+
+//export goEncryptInit
+func goEncryptInit(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, hKey C.CK_OBJECT_HANDLE) C.CK_RV {
+	if pMechanism == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(hKey)
+	goMechanism := toMechanism(pMechanism)
+
+	err := backend.EncryptInit(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goObjectHandle)
+
+	return fromError(err)
+}
+
+//export goEncrypt
+func goEncrypt(sessionHandle C.CK_SESSION_HANDLE, pData C.CK_BYTE_PTR, ulDataLen C.CK_ULONG, pEncryptedData C.CK_BYTE_PTR, pulEncryptedDataLen C.CK_ULONG_PTR) C.CK_RV {
+	if pData == nil || pulEncryptedDataLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goData := C.GoBytes(unsafe.Pointer(pData), C.int(ulDataLen))
+
+	var (
+		encryptedData []byte
+		err           error
+	)
+
+	encryptedData, err = backend.Encrypt(goSessionHandle, goData)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if pEncryptedData == nil {
+		size := len(encryptedData)
+		*pulEncryptedDataLen = C.CK_ULONG(size)
+
+		return fromError(nil)
+	}
+
+	if int(*pulEncryptedDataLen) < len(encryptedData) {
+		*pulEncryptedDataLen = C.CK_ULONG(len(encryptedData))
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	goEncryptedData := (*[1 << 30]byte)(unsafe.Pointer(pEncryptedData))[:*pulEncryptedDataLen:*pulEncryptedDataLen]
+	copy(goEncryptedData, encryptedData)
+	*pulEncryptedDataLen = C.CK_ULONG(len(encryptedData))
+
+	return fromError(nil)
+}
+
+//export goEncryptUpdate
+func goEncryptUpdate(sessionHandle C.CK_SESSION_HANDLE, pPart C.CK_BYTE_PTR, ulPartLen C.CK_ULONG, pEncryptedPart C.CK_BYTE_PTR, pulEncryptedPartLen C.CK_ULONG_PTR) C.CK_RV {
+	if pPart == nil || pEncryptedPart == nil || pulEncryptedPartLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goData := C.GoBytes(unsafe.Pointer(pPart), C.int(ulPartLen))
+	goEncryptedPart := (*[1 << 30]byte)(unsafe.Pointer(pEncryptedPart))[:*pulEncryptedPartLen:*pulEncryptedPartLen]
+
+	encryptedPart, err := backend.Encrypt(goSessionHandle, goData)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulEncryptedPartLen) < len(encryptedPart) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goEncryptedPart, encryptedPart)
+	*pulEncryptedPartLen = C.CK_ULONG(len(encryptedPart))
+
+	return fromError(nil)
+}
+
+//export goEncryptFinal
+func goEncryptFinal(sessionHandle C.CK_SESSION_HANDLE, pLastEncryptedPart C.CK_BYTE_PTR, pulLastEncryptedPartLen C.CK_ULONG_PTR) C.CK_RV {
+	if pLastEncryptedPart == nil || pulLastEncryptedPartLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goLastEncryptedPart := (*[1 << 30]byte)(unsafe.Pointer(pLastEncryptedPart))[:*pulLastEncryptedPartLen:*pulLastEncryptedPartLen]
+
+	lastEncryptedPart, err := backend.EncryptFinal(goSessionHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulLastEncryptedPartLen) < len(lastEncryptedPart) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goLastEncryptedPart, lastEncryptedPart)
+	*pulLastEncryptedPartLen = C.CK_ULONG(len(lastEncryptedPart))
+
+	return fromError(nil)
+}
+
+//export goDecryptInit
+func goDecryptInit(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, hKey C.CK_OBJECT_HANDLE) C.CK_RV {
+	if pMechanism == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(hKey)
+	goMechanism := toMechanism(pMechanism)
+
+	err := backend.DecryptInit(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goObjectHandle)
+
+	return fromError(err)
+}
+
+//export goDecrypt
+func goDecrypt(sessionHandle C.CK_SESSION_HANDLE, pEncryptedData C.CK_BYTE_PTR, ulEncryptedDataLen C.CK_ULONG, pData C.CK_BYTE_PTR, pulDataLen C.CK_ULONG_PTR) C.CK_RV {
+	if pEncryptedData == nil || pulDataLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goEncryptedData := C.GoBytes(unsafe.Pointer(pEncryptedData), C.int(ulEncryptedDataLen))
+
+	var (
+		data []byte
+		err  error
+	)
+
+	session, err := getSession(goSessionHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if pData == nil {
+		data, err = backend.Decrypt(goSessionHandle, goEncryptedData)
+		if err != nil {
+			return fromError(err)
+		}
+
+		session.decryptData = data
+
+		size := len(data)
+		*pulDataLen = C.CK_ULONG(size)
+
+		return fromError(nil)
+	}
+
+	goData := (*[1 << 30]byte)(unsafe.Pointer(pData))[:*pulDataLen:*pulDataLen]
+
+	data = session.decryptData
+	if data != nil {
+		session.decryptData = nil
+	} else {
+		data, err = backend.Decrypt(goSessionHandle, goEncryptedData)
+		if err != nil {
+			return fromError(err)
+		}
+	}
+
+	if int(*pulDataLen) < len(data) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goData, data)
+	*pulDataLen = C.CK_ULONG(len(data))
+
+	return fromError(nil)
+}
+
+//export goDecryptUpdate
+func goDecryptUpdate(sessionHandle C.CK_SESSION_HANDLE, pEncryptedPart C.CK_BYTE_PTR, ulEncryptedPartLen C.CK_ULONG, pPart C.CK_BYTE_PTR, pulPartLen C.CK_ULONG_PTR) C.CK_RV {
+	if pEncryptedPart == nil || pPart == nil || pulPartLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goData := C.GoBytes(unsafe.Pointer(pPart), C.int(ulEncryptedPartLen))
+	goPart := (*[1 << 30]byte)(unsafe.Pointer(pPart))[:*pulPartLen:*pulPartLen]
+
+	decryptedPart, err := backend.Decrypt(goSessionHandle, goData)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulPartLen) < len(decryptedPart) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goPart, decryptedPart)
+	*pulPartLen = C.CK_ULONG(len(decryptedPart))
+
+	return fromError(nil)
+}
+
+//export goDecryptFinal
+func goDecryptFinal(sessionHandle C.CK_SESSION_HANDLE, pLastPart C.CK_BYTE_PTR, pulLastPartLen C.CK_ULONG_PTR) C.CK_RV {
+	if pLastPart == nil || pulLastPartLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goLastPart := (*[1 << 30]byte)(unsafe.Pointer(pLastPart))[:*pulLastPartLen:*pulLastPartLen]
+
+	lastDataPart, err := backend.DecryptFinal(goSessionHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulLastPartLen) < len(lastDataPart) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goLastPart, lastDataPart)
+	*pulLastPartLen = C.CK_ULONG(len(lastDataPart))
+
+	return fromError(err)
+}
+
+//export goDigestInit
+func goDigestInit(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR) C.CK_RV {
+	if pMechanism == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goMechanism := toMechanism(pMechanism)
+	err := backend.DigestInit(goSessionHandle, []*pkcs11.Mechanism{goMechanism})
+
+	return fromError(err)
+}
+
+//export goDigest
+func goDigest(sessionHandle C.CK_SESSION_HANDLE, pData C.CK_BYTE_PTR, ulDataLen C.CK_ULONG, pDigest C.CK_BYTE_PTR, pulDigestLen C.CK_ULONG_PTR) C.CK_RV {
+	if pData == nil || pulDigestLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goData := C.GoBytes(unsafe.Pointer(pData), C.int(ulDataLen))
+
+	var (
+		digest []byte
+		err    error
+	)
+
+	session, err := getSession(goSessionHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if pDigest == nil {
+		digest, err = backend.Digest(goSessionHandle, goData)
+		if err != nil {
+			return fromError(err)
+		}
+
+		session.digestData = digest
+
+		size := len(digest)
+		*pulDigestLen = C.CK_ULONG(size)
+
+		return fromError(nil)
+	}
+
+	goDigest := (*[1 << 30]byte)(unsafe.Pointer(pDigest))[:*pulDigestLen:*pulDigestLen]
+
+	digest = session.digestData
+	if digest != nil {
+		session.digestData = nil
+	} else {
+		digest, err = backend.Digest(goSessionHandle, goData)
+		if err != nil {
+			return fromError(err)
+		}
+	}
+
+	if int(*pulDigestLen) < len(digest) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goDigest, digest)
+	*pulDigestLen = C.CK_ULONG(len(digest))
+
+	return fromError(nil)
+}
+
+//export goDigestUpdate
+func goDigestUpdate(sessionHandle C.CK_SESSION_HANDLE, pPart C.CK_BYTE_PTR, ulPartLen C.CK_ULONG) C.CK_RV {
+	if pPart == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goPart := C.GoBytes(unsafe.Pointer(pPart), C.int(ulPartLen))
+
+	err := backend.DigestUpdate(goSessionHandle, goPart)
+
+	return fromError(err)
+}
+
+//export goDigestKey
+func goDigestKey(sessionHandle C.CK_SESSION_HANDLE, hKey C.CK_OBJECT_HANDLE) C.CK_RV {
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goKeyHandle := pkcs11.ObjectHandle(hKey)
+
+	err := backend.DigestKey(goSessionHandle, goKeyHandle)
+
+	return fromError(err)
+}
+
+//export goDigestFinal
+func goDigestFinal(sessionHandle C.CK_SESSION_HANDLE, pDigest C.CK_BYTE_PTR, pulDigestLen C.CK_ULONG_PTR) C.CK_RV {
+	if pDigest == nil || pulDigestLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goDigest := (*[1 << 30]byte)(unsafe.Pointer(pDigest))[:*pulDigestLen:*pulDigestLen]
+
+	digest, err := backend.DigestFinal(goSessionHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulDigestLen) < len(digest) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goDigest, digest)
+	*pulDigestLen = C.CK_ULONG(len(digest))
+
+	return fromError(nil)
+}
+
+//export goSignInit
+func goSignInit(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, hKey C.CK_OBJECT_HANDLE) C.CK_RV {
+	if pMechanism == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(hKey)
+	goMechanism := toMechanism(pMechanism)
+
+	err := backend.SignInit(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goObjectHandle)
+
+	return fromError(err)
+}
+
+//export goSign
+func goSign(sessionHandle C.CK_SESSION_HANDLE, pData C.CK_BYTE_PTR, ulDataLen C.CK_ULONG, pSignature C.CK_BYTE_PTR, pulSignatureLen C.CK_ULONG_PTR) C.CK_RV {
+	if pData == nil || pulSignatureLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goData := C.GoBytes(unsafe.Pointer(pData), C.int(ulDataLen))
+
+	var (
+		signature []byte
+		err       error
+	)
+
+	session, err := getSession(goSessionHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if pSignature == nil {
+		signature, err = backend.Sign(goSessionHandle, goData)
+		if err != nil {
+			return fromError(err)
+		}
+
+		session.signData = signature
+
+		size := len(signature)
+		*pulSignatureLen = C.CK_ULONG(size)
+
+		return fromError(nil)
+	}
+
+	goSignature := (*[1 << 30]byte)(unsafe.Pointer(pSignature))[:*pulSignatureLen:*pulSignatureLen]
+
+	signature = session.signData
+	if signature != nil {
+		session.signData = nil
+	} else {
+		signature, err = backend.Sign(goSessionHandle, goData)
+		if err != nil {
+			return fromError(err)
+		}
+	}
+
+	if int(*pulSignatureLen) < len(signature) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goSignature, signature)
+	*pulSignatureLen = C.CK_ULONG(len(signature))
+
+	return fromError(nil)
+}
+
+//export goSignUpdate
+func goSignUpdate(sessionHandle C.CK_SESSION_HANDLE, pPart C.CK_BYTE_PTR, ulPartLen C.CK_ULONG) C.CK_RV {
+	if pPart == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goPart := C.GoBytes(unsafe.Pointer(pPart), C.int(ulPartLen))
+
+	err := backend.SignUpdate(goSessionHandle, goPart)
+
+	return fromError(err)
+}
+
+//export goSignFinal
+func goSignFinal(sessionHandle C.CK_SESSION_HANDLE, pSignature C.CK_BYTE_PTR, pulSignatureLen C.CK_ULONG_PTR) C.CK_RV {
+	if pSignature == nil || pulSignatureLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goSignature := (*[1 << 30]byte)(unsafe.Pointer(pSignature))[:*pulSignatureLen:*pulSignatureLen]
+
+	signature, err := backend.SignFinal(goSessionHandle)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulSignatureLen) < len(signature) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goSignature, signature)
+	*pulSignatureLen = C.CK_ULONG(len(signature))
+
+	return fromError(nil)
+}
+
+//export goSignRecoverInit
+func goSignRecoverInit(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, hKey C.CK_OBJECT_HANDLE) C.CK_RV {
+	if pMechanism == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(hKey)
+	goMechanism := toMechanism(pMechanism)
+
+	err := backend.SignRecoverInit(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goObjectHandle)
+
+	return fromError(err)
+}
+
+//export goSignRecover
+func goSignRecover(sessionHandle C.CK_SESSION_HANDLE, pData C.CK_BYTE_PTR, ulDataLen C.CK_ULONG, pSignature C.CK_BYTE_PTR, pulSignatureLen C.CK_ULONG_PTR) C.CK_RV {
+	if pData == nil || pSignature == nil || pulSignatureLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goData := C.GoBytes(unsafe.Pointer(pData), C.int(ulDataLen))
+	goSignature := (*[1 << 30]byte)(unsafe.Pointer(pSignature))[:*pulSignatureLen:*pulSignatureLen]
+
+	signature, err := backend.SignRecover(goSessionHandle, goData)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulSignatureLen) < len(signature) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goSignature, signature)
+	*pulSignatureLen = C.CK_ULONG(len(signature))
+
+	return fromError(nil)
+}
+
+//export goVerifyInit
+func goVerifyInit(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, hKey C.CK_OBJECT_HANDLE) C.CK_RV {
+	if pMechanism == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(hKey)
+	goMechanism := toMechanism(pMechanism)
+
+	err := backend.VerifyInit(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goObjectHandle)
+
+	return fromError(err)
+}
+
+//export goVerify
+func goVerify(sessionHandle C.CK_SESSION_HANDLE, pData C.CK_BYTE_PTR, ulDataLen C.CK_ULONG, pSignature C.CK_BYTE_PTR, ulSignatureLen C.CK_ULONG) C.CK_RV {
+	if pData == nil || pSignature == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goData := C.GoBytes(unsafe.Pointer(pData), C.int(ulDataLen))
+	goSignature := C.GoBytes(unsafe.Pointer(pSignature), C.int(ulSignatureLen))
+
+	err := backend.Verify(goSessionHandle, goData, goSignature)
+
+	return fromError(err)
+}
+
+//export goVerifyUpdate
+func goVerifyUpdate(sessionHandle C.CK_SESSION_HANDLE, pPart C.CK_BYTE_PTR, ulPartLen C.CK_ULONG) C.CK_RV {
+	if pPart == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goPart := C.GoBytes(unsafe.Pointer(pPart), C.int(ulPartLen))
+
+	err := backend.VerifyUpdate(goSessionHandle, goPart)
+
+	return fromError(err)
+}
+
+//export goVerifyFinal
+func goVerifyFinal(sessionHandle C.CK_SESSION_HANDLE, pSignature C.CK_BYTE_PTR, ulSignatureLen C.CK_ULONG) C.CK_RV {
+	if pSignature == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goSignature := C.GoBytes(unsafe.Pointer(pSignature), C.int(ulSignatureLen))
+
+	err := backend.VerifyFinal(goSessionHandle, goSignature)
+
+	return fromError(err)
+}
+
+//export goVerifyRecoverInit
+func goVerifyRecoverInit(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, hKey C.CK_OBJECT_HANDLE) C.CK_RV {
+	if pMechanism == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goObjectHandle := pkcs11.ObjectHandle(hKey)
+	goMechanism := toMechanism(pMechanism)
+
+	err := backend.VerifyRecoverInit(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goObjectHandle)
+
+	return fromError(err)
+}
+
+//export goVerifyRecover
+func goVerifyRecover(sessionHandle C.CK_SESSION_HANDLE, pSignature C.CK_BYTE_PTR, ulSignatureLen C.CK_ULONG, pData C.CK_BYTE_PTR, pulDataLen C.CK_ULONG_PTR) C.CK_RV {
+	if pData == nil || pSignature == nil || pulDataLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goSignature := C.GoBytes(unsafe.Pointer(pSignature), C.int(ulSignatureLen))
+	goData := (*[1 << 30]byte)(unsafe.Pointer(pData))[:*pulDataLen:*pulDataLen]
+
+	data, err := backend.VerifyRecover(goSessionHandle, goSignature)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulDataLen) < len(data) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goData, data)
+	*pulDataLen = C.CK_ULONG(len(data))
+
+	return fromError(nil)
+}
+
+//export goDigestEncryptUpdate
+func goDigestEncryptUpdate(sessionHandle C.CK_SESSION_HANDLE, pPart C.CK_BYTE_PTR, ulPartLen C.CK_ULONG, pEncryptedPart C.CK_BYTE_PTR, pulEncryptedPartLen C.CK_ULONG_PTR) C.CK_RV {
+	if pPart == nil || pEncryptedPart == nil || pulEncryptedPartLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goPart := C.GoBytes(unsafe.Pointer(pPart), C.int(ulPartLen))
+	goEncryptedPart := (*[1 << 30]byte)(unsafe.Pointer(pEncryptedPart))[:*pulEncryptedPartLen:*pulEncryptedPartLen]
+
+	encryptedPart, err := backend.DigestEncryptUpdate(goSessionHandle, goPart)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulEncryptedPartLen) < len(encryptedPart) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goEncryptedPart, encryptedPart)
+	*pulEncryptedPartLen = C.CK_ULONG(len(encryptedPart))
+
+	return fromError(nil)
+}
+
+//export goDecryptDigestUpdate
+func goDecryptDigestUpdate(sessionHandle C.CK_SESSION_HANDLE, pEncryptedPart C.CK_BYTE_PTR, ulEncryptedPartLen C.CK_ULONG, pPart C.CK_BYTE_PTR, pulPartLen C.CK_ULONG_PTR) C.CK_RV {
+	if pPart == nil || pEncryptedPart == nil || pulPartLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goEncryptedPart := C.GoBytes(unsafe.Pointer(pEncryptedPart), C.int(ulEncryptedPartLen))
+	goPart := (*[1 << 30]byte)(unsafe.Pointer(pEncryptedPart))[:*pulPartLen:*pulPartLen]
+
+	part, err := backend.DecryptDigestUpdate(goSessionHandle, goEncryptedPart)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulPartLen) < len(part) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goPart, part)
+	*pulPartLen = C.CK_ULONG(len(part))
+
+	return fromError(nil)
+}
+
+//export goSignEncryptUpdate
+func goSignEncryptUpdate(sessionHandle C.CK_SESSION_HANDLE, pPart C.CK_BYTE_PTR, ulPartLen C.CK_ULONG, pEncryptedPart C.CK_BYTE_PTR, pulEncryptedPartLen C.CK_ULONG_PTR) C.CK_RV {
+	if pPart == nil || pEncryptedPart == nil || pulEncryptedPartLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goPart := C.GoBytes(unsafe.Pointer(pPart), C.int(ulPartLen))
+	goEncryptedPart := (*[1 << 30]byte)(unsafe.Pointer(pEncryptedPart))[:*pulEncryptedPartLen:*pulEncryptedPartLen]
+
+	encryptedPart, err := backend.SignEncryptUpdate(goSessionHandle, goPart)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulEncryptedPartLen) < len(encryptedPart) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goEncryptedPart, encryptedPart)
+	*pulEncryptedPartLen = C.CK_ULONG(len(encryptedPart))
+
+	return fromError(nil)
+}
+
+//export goDecryptVerifyUpdate
+func goDecryptVerifyUpdate(sessionHandle C.CK_SESSION_HANDLE, pEncryptedPart C.CK_BYTE_PTR, ulEncryptedPartLen C.CK_ULONG, pPart C.CK_BYTE_PTR, pulPartLen C.CK_ULONG_PTR) C.CK_RV {
+	if pPart == nil || pEncryptedPart == nil || pulPartLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goEncryptedPart := C.GoBytes(unsafe.Pointer(pEncryptedPart), C.int(ulEncryptedPartLen))
+	goPart := (*[1 << 30]byte)(unsafe.Pointer(pEncryptedPart))[:*pulPartLen:*pulPartLen]
+
+	part, err := backend.DecryptVerifyUpdate(goSessionHandle, goEncryptedPart)
+	if err != nil {
+		return fromError(err)
+	}
+
+	if int(*pulPartLen) < len(part) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goPart, part)
+	*pulPartLen = C.CK_ULONG(len(part))
+
+	return fromError(nil)
+}
+
+//export goGenerateKey
+func goGenerateKey(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, pTemplate C.CK_ATTRIBUTE_PTR, ulCount C.CK_ULONG, phKey C.CK_OBJECT_HANDLE_PTR) C.CK_RV {
+	if pMechanism == nil || pTemplate == nil && ulCount > 0 || phKey == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goMechanism := toMechanism(pMechanism)
+	goTemplate := toTemplate(pTemplate, ulCount)
+
+	keyHandle, err := backend.GenerateKey(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goTemplate)
+	if err != nil {
+		return fromError(err)
+	}
+
+	*phKey = C.CK_OBJECT_HANDLE(keyHandle)
+
+	return fromError(nil)
+}
+
+//export goGenerateKeyPair
+func goGenerateKeyPair(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, pPublicKeyTemplate C.CK_ATTRIBUTE_PTR, ulPublicKeyAttributeCount C.CK_ULONG, pPrivateKeyTemplate C.CK_ATTRIBUTE_PTR, ulPrivateKeyAttributeCount C.CK_ULONG, phPublicKey, phPrivateKey C.CK_OBJECT_HANDLE_PTR) C.CK_RV {
+	if pMechanism == nil || pPublicKeyTemplate == nil || pPrivateKeyTemplate == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goMechanism := toMechanism(pMechanism)
+	goPublicTemplate := toTemplate(pPublicKeyTemplate, ulPublicKeyAttributeCount)
+	goPrivateTemplate := toTemplate(pPrivateKeyTemplate, ulPrivateKeyAttributeCount)
+
+	pubKeyHandle, privKeyHandle, err := backend.GenerateKeyPair(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goPublicTemplate, goPrivateTemplate)
+	if err != nil {
+		return fromError(err)
+	}
+
+	*phPublicKey = C.CK_OBJECT_HANDLE(pubKeyHandle)
+	*phPrivateKey = C.CK_OBJECT_HANDLE(privKeyHandle)
+
+	return fromError(nil)
+}
+
+//export goWrapKey
+func goWrapKey(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, hWrappingKey, hKey C.CK_OBJECT_HANDLE, pWrappedKey C.CK_BYTE_PTR, pulWrappedKeyLen C.CK_ULONG_PTR) C.CK_RV {
+	if pMechanism == nil || pWrappedKey == nil || pulWrappedKeyLen == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goMechanism := toMechanism(pMechanism)
+	goWrappingKey := pkcs11.ObjectHandle(hWrappingKey)
+	goKeyHandle := pkcs11.ObjectHandle(hKey)
+	goWrappedKey := (*[1 << 30]byte)(unsafe.Pointer(pWrappedKey))[:*pulWrappedKeyLen:*pulWrappedKeyLen]
+
+	wrappedKey, err := backend.WrapKey(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goWrappingKey, goKeyHandle)
+	if err != nil {
+		return fromError(nil)
+	}
+
+	if int(*pulWrappedKeyLen) < len(wrappedKey) {
+		return C.CKR_BUFFER_TOO_SMALL
+	}
+
+	copy(goWrappedKey, wrappedKey)
+	*pulWrappedKeyLen = C.CK_ULONG(len(wrappedKey))
+
+	return fromError(nil)
+}
+
+//export goUnwrapKey
+func goUnwrapKey(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, hUnwrappingKey C.CK_OBJECT_HANDLE, pWrappedKey C.CK_BYTE_PTR, ulWrappedKeyLen C.CK_ULONG, pTemplate C.CK_ATTRIBUTE_PTR, ulAttributeCount C.CK_ULONG, phKey C.CK_OBJECT_HANDLE_PTR) C.CK_RV {
+	if pMechanism == nil || pWrappedKey == nil || phKey == nil || pTemplate == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goMechanism := toMechanism(pMechanism)
+	goTemplate := toTemplate(pTemplate, ulAttributeCount)
+	goUnwrappingKey := pkcs11.ObjectHandle(hUnwrappingKey)
+	goWrappedKey := C.GoBytes(unsafe.Pointer(pWrappedKey), C.int(ulWrappedKeyLen))
+
+	keyHandle, err := backend.UnwrapKey(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goUnwrappingKey, goWrappedKey, goTemplate)
+	if err != nil {
+		return fromError(nil)
+	}
+
+	*phKey = C.CK_OBJECT_HANDLE(keyHandle)
+
+	return fromError(nil)
+}
+
+//export goDeriveKey
+func goDeriveKey(sessionHandle C.CK_SESSION_HANDLE, pMechanism C.CK_MECHANISM_PTR, hBaseKey C.CK_OBJECT_HANDLE, pTemplate C.CK_ATTRIBUTE_PTR, ulAttributeCount C.CK_ULONG, phKey C.CK_OBJECT_HANDLE_PTR) C.CK_RV {
+	if pMechanism == nil || phKey == nil || pTemplate == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goMechanism := toMechanism(pMechanism)
+	goTemplate := toTemplate(pTemplate, ulAttributeCount)
+	goBaseKey := pkcs11.ObjectHandle(hBaseKey)
+
+	keyHandle, err := backend.DeriveKey(goSessionHandle, []*pkcs11.Mechanism{goMechanism}, goBaseKey, goTemplate)
+	if err != nil {
+		return fromError(nil)
+	}
+
+	*phKey = C.CK_OBJECT_HANDLE(keyHandle)
+
+	return fromError(nil)
+}
+
+//export goSeedRandom
+func goSeedRandom(sessionHandle C.CK_SESSION_HANDLE, pSeed C.CK_BYTE_PTR, ulSeedLen C.CK_ULONG) C.CK_RV {
+	if pSeed == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goSeed := C.GoBytes(unsafe.Pointer(pSeed), C.int(ulSeedLen))
+
+	err := backend.SeedRandom(goSessionHandle, goSeed)
+
+	return fromError(err)
+}
+
+//export goGenerateRandom
+func goGenerateRandom(sessionHandle C.CK_SESSION_HANDLE, pRandomData C.CK_BYTE_PTR, ulRandomLen C.CK_ULONG) C.CK_RV {
+	if pRandomData == nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goSessionHandle := pkcs11.SessionHandle(sessionHandle)
+	goRandomData := (*[1 << 30]byte)(unsafe.Pointer(pRandomData))[:ulRandomLen:ulRandomLen]
+	goRandomDataLen := int(ulRandomLen)
+
+	randomData, err := backend.GenerateRandom(goSessionHandle, goRandomDataLen)
+	if err != nil {
+		return fromError(err)
+	}
+
+	copy(goRandomData, randomData)
+
+	return fromError(nil)
+}
+
+//export goWaitForSlotEvent
+func goWaitForSlotEvent(flags C.CK_FLAGS, pSlot C.CK_SLOT_ID_PTR, pReserved C.CK_VOID_PTR) C.CK_RV {
+	if pSlot == nil || pReserved != nil {
+		return C.CKR_ARGUMENTS_BAD
+	}
+
+	goFlags := uint64(flags)
+
+	slotID, err := backend.WaitForSlotEvent(goFlags)
+	if err != nil {
+		return fromError(err)
+	}
+
+	*pSlot = C.CK_SLOT_ID(slotID)
+
+	return fromError(nil)
+}
