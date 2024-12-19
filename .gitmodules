@@ -1,0 +1,6 @@
+[submodule "ext/SoftHSMv2"]
+	path = ext/SoftHSMv2
+	url = git@github.com:softhsm/SoftHSMv2.git
+[submodule "ext/pkcs11test"]
+	path = ext/pkcs11test
+	url = git@github.com:google/pkcs11test.git

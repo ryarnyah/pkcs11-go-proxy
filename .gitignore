@@ -10,3 +10,4 @@ spkcs11-proxy*
 *.srl
 *.pem
 csr*.conf
+.local
